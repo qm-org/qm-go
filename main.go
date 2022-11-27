@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -22,9 +23,8 @@ func main() {
 
 	presetString := strconv.Itoa(*preset)
 
-	outputFPSString := strconv.Itoa(*outputFPS)
 	if *outputFPS == -1 {
-		outputFPS = 24 - (3 * preset)
+		*outputFPS = 24 - (3 * *preset)
 	}
 
 	var outputScale float64
@@ -63,13 +63,15 @@ func main() {
 	inputWidth := getDimension("width", *input)
 	fmt.Println("width is", inputWidth)
 
-	outputHeight := int(float64(inputHeight) * outputScale)
-	outputWidth := int(float64(inputWidth) * outputScale)
-	bitrate := outputHeight / 2 * outputWidth * outputFPS / preset * 1000
+	outputHeight := int(math.Round(float64(inputHeight)*outputScale)/2) * 2
+	outputWidth := int(math.Round(float64(inputWidth)*outputScale)/2) * 2
+	bitrate := 2 * (outputHeight / 2 * outputWidth * int(math.Sqrt(float64(*outputFPS))) / *preset)
+	audioBitrate := 80000 / *preset
+	fmt.Println("bitrate is", bitrate, "which i got by doing", outputHeight, "/ 2 *", outputWidth, "*", *outputFPS, "/", *preset)
 
-	cmd := runFFmpeg(*input, *output, outputFPS, bitrate, outputHeight, outputWidth)
+	cmd := runFFmpeg(*input, *output, *outputFPS, bitrate, audioBitrate, outputWidth, outputHeight)
 
-	fmt.Println(*input, *outputFPS, *output, bitrate, "and we have", strconv.Itoa(outputHeight), "x", strconv.Itoa(outputWidth), "and it is preset", *preset, "or", preset)
+	fmt.Println(*input, *output, *outputFPS, bitrate, audioBitrate, outputWidth, outputHeight)
 
 	cmd.Run()
 }
@@ -169,18 +171,22 @@ func getDimension(axis string, in string) int {
 	return strint
 }
 
-func runFFmpeg(input string, output string, framerate int, bitrate int, height int, width int) *exec.Cmd {
+func runFFmpeg(input string, output string, framerate int, bitrate int, audioBitrate int, width int, height int) *exec.Cmd {
 	framerateString := strconv.Itoa(framerate)
 	bitrateString := strconv.Itoa(bitrate)
-	heightString := strconv.Itoa(height)
+	audioBitrateString := strconv.Itoa(audioBitrate)
 	widthString := strconv.Itoa(width)
+	heightString := strconv.Itoa(height)
 	return exec.Command(
 		"ffmpeg",
 		"-i", input,
-		"-r", framerateString,
+		"-preset", "ultrafast",
+		"-c:v", "libx264",
 		"-b:v", bitrateString,
 		"-vf", "scale="+widthString+":"+heightString,
-		"-c:v", "libx264",
+		"-r", framerateString,
+		"-c:a", "aac",
+		"-b:a", audioBitrateString,
 		output,
 	)
 }
