@@ -18,8 +18,12 @@ var (
 	input, output string
 	outFPS        int
 	outScale      float64
+	videoBrDiv    int
+	audioBrDiv    int
 	preset        int
 	filter        string
+	bitrate       int
+	audioBitrate  int
 )
 
 func init() {
@@ -29,6 +33,10 @@ func init() {
 	pflag.IntVarP(&preset, "preset", "p", 4, "Specify the preset used")
 	pflag.IntVarP(&outFPS, "fps", "f", -1, "Specify the output fps")
 	pflag.Float64VarP(&outScale, "scale", "s", -1, "Specify the output scale")
+	pflag.IntVar(&videoBrDiv, "video bitrate", -1, "Specify the video bitrate divisor")
+	pflag.IntVar(&videoBrDiv, "vb", -1, "Specify the video bitrate divisor")
+	pflag.IntVar(&audioBrDiv, "audio bitrate", -1, "Specify the audio bitrate divisor")
+	pflag.IntVar(&audioBrDiv, "ab", -1, "Specify the audio bitrate divisor")
 	pflag.BoolVar(&debug, "debug", false, "Print out debug information")
 	pflag.BoolVar(&interlace, "interlace", false, "Interlace the output")
 	pflag.Parse()
@@ -97,8 +105,18 @@ func main() {
 
 	outputHeight := int(math.Round(float64(inputHeight)*outScale)/2) * 2
 	outputWidth := int(math.Round(float64(inputWidth)*outScale)/2) * 2
-	bitrate := outputHeight * outputWidth * int(math.Sqrt(float64(outFPS))) / preset
-	audioBitrate := 80000 / preset
+	if videoBrDiv != -1 {
+		bitrate = outputHeight * outputWidth * int(math.Sqrt(float64(outFPS))) / videoBrDiv
+	} else {
+		bitrate = outputHeight * outputWidth * int(math.Sqrt(float64(outFPS))) / preset
+	}
+
+	if audioBrDiv != -1 {
+		audioBitrate = 80000 / audioBrDiv
+	} else {
+		audioBitrate = 80000 / preset
+	}
+
 	if debug {
 		log.Print("bitrate is", bitrate, "which i got by doing", outputHeight, "*", outputWidth, "*", int(math.Sqrt(float64(outFPS))), "/", preset)
 	}
