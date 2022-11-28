@@ -1,208 +1,234 @@
 package main
 
 import (
-	"bytes"
-	"flag"
-	"fmt"
+	"errors"
 	"log"
 	"math"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/spf13/pflag"
 )
 
-func main() {
-	fmt.Println("Quality Munchera")
-	input := flag.String("i", "", "Input file")
-	output := flag.String("o", "", "Output file")
-	outputFPS := flag.Int("fps", -1, "Output framerate")
-	outputScaleString := flag.String("s", "", "Amount to upscale by")
-	preset := flag.Int("p", 1, "Preset, 0-7, higher being worse")
+var (
+	debug         bool
+	interlace     bool
+	input, output string
+	outFPS        int
+	outScale      float64
+	preset        int
+	filter        string
+)
 
-	flag.Parse()
+func init() {
+	pflag.CommandLine.SortFlags = false
+	pflag.StringVarP(&input, "input", "i", "", "Specify the input file")
+	pflag.StringVarP(&output, "output", "o", "", "Specify the output file")
+	pflag.IntVarP(&preset, "preset", "p", 4, "Specify the preset used")
+	pflag.IntVarP(&outFPS, "fps", "f", -1, "Specify the output fps")
+	pflag.Float64VarP(&outScale, "scale", "s", -1, "Specify the output scale")
+	pflag.BoolVar(&debug, "debug", false, "Print out debug information")
+	pflag.BoolVar(&interlace, "interlace", false, "Interlace the output")
+	pflag.Parse()
 
-	presetString := strconv.Itoa(*preset)
-
-	if *outputFPS == -1 {
-		*outputFPS = 24 - (3 * *preset)
+	if input == "" {
+		log.Fatal("No input was specified")
+	}
+	if output == "" {
+		log.Fatal("No output was specified")
 	}
 
-	var outputScale float64
-	if *outputScaleString == "" {
-		outputScale = fracToFloat("1/" + presetString)
-	} else {
-		outputScale = fracToFloat(*outputScaleString)
+	_, err := os.Stat(input)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Fatal("Input file " + input + " does not exist")
+		} else {
+			log.Fatal(err)
+		}
 	}
 
-	if *output == "" {
-		log.Println("Output file not specified")
-	}
-
-	if *input != "" {
-		fmt.Println("input found " + *input)
-	} else {
-		fmt.Println("No input lmao")
-	}
-	if *output != "" {
-		fmt.Println("output found " + *output)
-	} else {
-		fmt.Println("No output lmao")
-	}
-
-	fmt.Println()
-
-	inputDuration := getDuration(*input)
-	fmt.Println("duration is", inputDuration)
-
-	inputFPS := getFramerate(*input)
-	fmt.Println("fps is", inputFPS)
-
-	inputHeight := getDimension("height", *input)
-	fmt.Println("height is", inputHeight)
-
-	inputWidth := getDimension("width", *input)
-	fmt.Println("width is", inputWidth)
-
-	outputHeight := int(math.Round(float64(inputHeight)*outputScale)/2) * 2
-	outputWidth := int(math.Round(float64(inputWidth)*outputScale)/2) * 2
-	bitrate := 2 * (outputHeight / 2 * outputWidth * int(math.Sqrt(float64(*outputFPS))) / *preset)
-	audioBitrate := 80000 / *preset
-	fmt.Println("bitrate is", bitrate, "which i got by doing", outputHeight, "/ 2 *", outputWidth, "*", *outputFPS, "/", *preset)
-
-	cmd := runFFmpeg(*input, *output, *outputFPS, bitrate, audioBitrate, outputWidth, outputHeight)
-
-	fmt.Println(*input, *output, *outputFPS, bitrate, audioBitrate, outputWidth, outputHeight)
-
-	cmd.Run()
 }
 
-func getDuration(in string) float64 {
-	var out bytes.Buffer
-	var stderr bytes.Buffer
+func main() {
+	if debug {
+		log.Print("throwing all flags out")
+		log.Print(input, output, preset, outFPS, outScale, debug)
+	}
 
-	cmdArgs := []string{
-		"-i", in,
+	if outFPS == -1 {
+		outFPS = 24 - (3 * preset)
+	}
+	if debug {
+		log.Print("Output FPS is", outFPS)
+	}
+
+	if outScale == -1 {
+		outScale = 1.0 / float64(preset)
+	}
+	if debug {
+		log.Print("Output scale is", outScale)
+	}
+
+	inputDuration, err := getDuration(input)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if debug {
+		log.Print("duration is", inputDuration)
+	}
+
+	inputFPS, err := getFramerate(input)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if debug {
+		log.Print("fps is", inputFPS)
+	}
+
+	inputWidth, inputHeight, err := getResolution(input)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if debug {
+		log.Print("resolution is", inputWidth, "by", inputHeight)
+	}
+
+	outputHeight := int(math.Round(float64(inputHeight)*outScale)/2) * 2
+	outputWidth := int(math.Round(float64(inputWidth)*outScale)/2) * 2
+	bitrate := outputHeight * outputWidth * int(math.Sqrt(float64(outFPS))) / preset
+	audioBitrate := 80000 / preset
+	if debug {
+		log.Print("bitrate is", bitrate, "which i got by doing", outputHeight, "*", outputWidth, "*", int(math.Sqrt(float64(outFPS))), "/", preset)
+	}
+
+	if interlace {
+		filter = ",interlace"
+	}
+
+	args := []string{
+		"-y",
+		"-i", input,
+		"-preset", "ultrafast",
+		"-r", strconv.Itoa(int(outFPS)),
+		"-c:v", "libx264",
+		"-b:v", strconv.Itoa(int(bitrate)),
+		"-vf", "scale=" + strconv.Itoa(outputWidth) + ":" + strconv.Itoa(outputHeight) + filter,
+		"-c:a", "aac",
+		"-b:a", strconv.Itoa(int(audioBitrate)),
+		output,
+	}
+
+	cmd := exec.Command("ffmpeg", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		if debug {
+			log.Print(string(out))
+		}
+		log.Fatal(err)
+	}
+}
+
+// move to other file when it decides to actually work
+func getDuration(input string) (float64, error) {
+	args := []string{
+		"-i", input,
 		"-show_entries", "format=duration",
 		"-of", "csv=p=0",
 	}
 
-	cmdt := exec.Command("ffprobe", cmdArgs...)
-	cmdt.Stdout = &out
-	cmdt.Stderr = &stderr
+	cmd := exec.Command("ffprobe", args...)
 
-	if err := cmdt.Run(); err != nil {
-		log.Println(err)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, err
 	}
 
-	stria := out.String()
-	stria = strings.TrimSuffix(stria, "\r\n")
-	striafloat, erro := strconv.ParseFloat(stria, 64)
+	outs := string(out)
+	outs = strings.TrimSuffix(outs, "\n")
+	outs = strings.TrimSuffix(outs, "\r")
+	outs = strings.TrimSuffix(outs, "\n")
 
-	if erro != nil {
-		log.Println(erro)
+	outf, err := strconv.ParseFloat(outs, 64)
+	if err != nil {
+		return 0, nil
 	}
 
-	return striafloat
+	return outf, nil
 }
 
-func getFramerate(in string) float64 {
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-
-	cmdArgs := []string{
-		"-i", in,
+func getFramerate(input string) (float64, error) {
+	args := []string{
+		"-i", input,
 		"-show_entries", "stream=r_frame_rate",
 		"-select_streams", "v:0",
 		"-of", "csv=p=0",
 	}
 
-	cmdt := exec.Command("ffprobe", cmdArgs...)
-	cmdt.Stdout = &out
-	cmdt.Stderr = &stderr
+	cmd := exec.Command("ffprobe", args...)
 
-	if err := cmdt.Run(); err != nil {
-		log.Println(err)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, err
 	}
 
-	stria := out.String()
-	stria = strings.TrimSuffix(stria, "\r\n")
-	numden := strings.Split(stria, "/")
-	numer, numerror := strconv.Atoi(numden[0])
-	denom, denerror := strconv.Atoi(numden[1])
-	striafloat := float64(numer) / float64(denom)
+	outs := string(out)
+	outs = strings.TrimSuffix(outs, "\n")
+	outs = strings.TrimSuffix(outs, "\r")
+	outs = strings.TrimSuffix(outs, "\n")
+	outl := strings.Split(outs, "/")
 
-	if numerror != nil {
-		log.Println(numerror)
-	}
-	if denerror != nil {
-		log.Println(denerror)
+	if len(outl) != 2 {
+		return 0, errors.New("parsed list is not of length 2")
 	}
 
-	return striafloat
+	numerator, err := strconv.Atoi(outl[0])
+	if err != nil {
+		return 0, err
+	}
+	denominator, err := strconv.Atoi(outl[1])
+	if err != nil {
+		return 0, err
+	}
+
+	return float64(numerator) / float64(denominator), nil
 }
 
-func getDimension(axis string, in string) int {
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-
-	cmdArgs := []string{
-		"-i", in,
+func getResolution(input string) (int, int, error) {
+	args := []string{
+		"-i", input,
 		"-select_streams", "v:0",
-		"-show_entries", "stream=" + axis,
+		"-show_entries", "stream=width,height",
 		"-of", "csv=p=0",
 	}
 
-	cmdt := exec.Command("ffprobe", cmdArgs...)
-	cmdt.Stdout = &out
-	cmdt.Stderr = &stderr
+	cmd := exec.Command("ffprobe", args...)
 
-	if err := cmdt.Run(); err != nil {
-		log.Println(err)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, 0, err
 	}
 
-	stria := out.String()
-	stria = strings.TrimSuffix(stria, "\r\n")
-	strint, strerror := strconv.Atoi(stria)
+	outs := string(out)
 
-	if strerror != nil {
-		log.Println(strerror)
+	outs = strings.TrimSuffix(outs, "\n")
+	outs = strings.TrimSuffix(outs, "\r")
+	outs = strings.TrimSuffix(outs, "\n")
+	outl := strings.Split(outs, ",")
+
+	if len(outl) != 2 {
+		return 0, 0, errors.New("parsed list is not of length 2")
 	}
 
-	return strint
-}
-
-func runFFmpeg(input string, output string, framerate int, bitrate int, audioBitrate int, width int, height int) *exec.Cmd {
-	framerateString := strconv.Itoa(framerate)
-	bitrateString := strconv.Itoa(bitrate)
-	audioBitrateString := strconv.Itoa(audioBitrate)
-	widthString := strconv.Itoa(width)
-	heightString := strconv.Itoa(height)
-	return exec.Command(
-		"ffmpeg",
-		"-i", input,
-		"-preset", "ultrafast",
-		"-c:v", "libx264",
-		"-b:v", bitrateString,
-		"-vf", "scale="+widthString+":"+heightString,
-		"-r", framerateString,
-		"-c:a", "aac",
-		"-b:a", audioBitrateString,
-		output,
-	)
-}
-
-func fracToFloat(in string) float64 {
-	numden := strings.Split(in, "/")
-	numer, numerror := strconv.Atoi(numden[0])
-	denom, denerror := strconv.Atoi(numden[1])
-	striafloat := float64(numer) / float64(denom)
-
-	if numerror != nil {
-		log.Println(numerror)
+	width, err := strconv.Atoi(outl[0])
+	if err != nil {
+		return 0, 0, err
 	}
-	if denerror != nil {
-		log.Println(denerror)
+	height, err := strconv.Atoi(outl[1])
+	if err != nil {
+		return 0, 0, err
 	}
 
-	return striafloat
+	return width, height, nil
 }
