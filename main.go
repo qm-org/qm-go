@@ -15,6 +15,7 @@ import (
 var (
 	debug         bool
 	interlace     bool
+	lagfun        bool
 	input, output string
 	outFPS        int
 	outScale      float64
@@ -42,6 +43,7 @@ func init() {
 	pflag.StringVar(&stretch, "stretch", "1:1", "Modify the existing aspect ratio")
 	pflag.BoolVar(&debug, "debug", false, "Print out debug information")
 	pflag.BoolVar(&interlace, "interlace", false, "Interlace the output")
+	pflag.BoolVar(&lagfun, "lagfun", false, "Force darker pixels to update slower")
 	pflag.IntVar(&speed, "speed", 1, "Specify the video and audio speed")
 	pflag.Parse()
 
@@ -141,6 +143,10 @@ func main() {
 
 	if speed != 1 {
 		filter = ",setpts=(1/" + strconv.Itoa(speed) + ")*PTS;atempo=" + strconv.Itoa(speed)
+	}
+
+	if lagfun {
+		filter = filter + ",lagfun"
 	}
 
 	if interlace {
