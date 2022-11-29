@@ -20,10 +20,13 @@ var (
 	outScale      float64
 	videoBrDiv    int
 	audioBrDiv    int
-	preset        int
 	filter        string
+	preset        int
+	speed         int
 	bitrate       int
 	audioBitrate  int
+	audioFilter   string
+	audioCommand  string
 )
 
 func init() {
@@ -39,6 +42,7 @@ func init() {
 	pflag.IntVar(&audioBrDiv, "ab", -1, "Specify the audio bitrate divisor")
 	pflag.BoolVar(&debug, "debug", false, "Print out debug information")
 	pflag.BoolVar(&interlace, "interlace", false, "Interlace the output")
+	pflag.IntVar(&speed, "speed", 1, "Specify the video and audio speed")
 	pflag.Parse()
 
 	if input == "" {
@@ -121,8 +125,17 @@ func main() {
 		log.Print("bitrate is", bitrate, "which i got by doing", outputHeight, "*", outputWidth, "*", int(math.Sqrt(float64(outFPS))), "/", preset)
 	}
 
+	if speed != 1 {
+		filter = ",setpts=(1/" + strconv.Itoa(speed) + ")*PTS"
+		audioFilter = "atempo=" + strconv.Itoa(speed)
+	}
+
 	if interlace {
-		filter = ",interlace"
+		filter = filter + ",interlace"
+	}
+
+	if audioFilter != "" {
+		audioCommand = "-af"
 	}
 
 	args := []string{
@@ -133,6 +146,7 @@ func main() {
 		"-c:v", "libx264",
 		"-b:v", strconv.Itoa(int(bitrate)),
 		"-vf", "scale=" + strconv.Itoa(outputWidth) + ":" + strconv.Itoa(outputHeight) + filter,
+		audioCommand, audioFilter,
 		"-c:a", "aac",
 		"-b:a", strconv.Itoa(int(audioBitrate)),
 		output,
