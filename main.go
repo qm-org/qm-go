@@ -24,27 +24,31 @@ var (
 	preset        int
 	filter        string
 	speed         int
+	corrupt       int
 	stretch       string
 	bitrate       int
 	audioBitrate  int
+	corruptAmount int
+	corruptFilter string
 )
 
 func init() {
 	pflag.CommandLine.SortFlags = false
 	pflag.StringVarP(&input, "input", "i", "", "Specify the input file")
 	pflag.StringVarP(&output, "output", "o", "", "Specify the output file")
-	pflag.IntVarP(&preset, "preset", "p", 4, "Specify the preset used")
-	pflag.IntVarP(&outFPS, "fps", "f", -1, "Specify the output fps")
+	pflag.BoolVarP(&debug, "debug", "d", false, "Print out debug information")
+	pflag.IntVarP(&preset, "preset", "p", 4, "Specify the quality preset")
 	pflag.Float64VarP(&outScale, "scale", "s", -1, "Specify the output scale")
+	pflag.IntVar(&outFPS, "fps", -1, "Specify the output fps")
 	pflag.IntVar(&videoBrDiv, "video-bitrate", -1, "Specify the video bitrate divisor")
-	pflag.IntVar(&videoBrDiv, "vb", videoBrDiv, "Specify the video bitrate divisor")
+	pflag.IntVar(&videoBrDiv, "vb", videoBrDiv, "Shorthand for --video-bitrate")
 	pflag.IntVar(&audioBrDiv, "audio-bitrate", -1, "Specify the audio bitrate divisor")
-	pflag.IntVar(&audioBrDiv, "ab", audioBrDiv, "Specify the audio bitrate divisor")
+	pflag.IntVar(&audioBrDiv, "ab", audioBrDiv, "Shorthand for --audio-bitrate")
 	pflag.StringVar(&stretch, "stretch", "1:1", "Modify the existing aspect ratio")
-	pflag.BoolVar(&debug, "debug", false, "Print out debug information")
 	pflag.BoolVar(&interlace, "interlace", false, "Interlace the output")
 	pflag.BoolVar(&lagfun, "lagfun", false, "Force darker pixels to update slower")
 	pflag.IntVar(&speed, "speed", 1, "Specify the video and audio speed")
+	pflag.IntVar(&corrupt, "corrupt", -1, "Corrupt the output")
 	pflag.Parse()
 
 	if input == "" {
@@ -71,20 +75,7 @@ func main() {
 		log.Print(input, output, preset, outFPS, outScale, videoBrDiv, audioBrDiv, debug, interlace, speed)
 	}
 
-	if outFPS == -1 {
-		outFPS = 24 - (3 * preset)
-	}
-	if debug {
-		log.Print("Output FPS is", outFPS)
-	}
-
-	if outScale == -1 {
-		outScale = 1.0 / float64(preset)
-	}
-	if debug {
-		log.Print("Output scale is", outScale)
-	}
-
+	// get needed information from input video
 	inputDuration, err := getDuration(input)
 	if err != nil {
 		log.Fatal(err)
@@ -105,10 +96,27 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	if debug {
 		log.Print("resolution is", inputWidth, "by", inputHeight)
 	}
 
+	// set up the args for the output
+	if outFPS == -1 {
+		outFPS = 24 - (3 * preset)
+	}
+	if debug {
+		log.Print("Output FPS is", outFPS)
+	}
+
+	if outScale == -1 {
+		outScale = 1.0 / float64(preset)
+	}
+	if debug {
+		log.Print("Output scale is", outScale)
+	}
+
+	// stretch calculations
 	aspect := strings.Split(stretch, ":")
 	aspectWidth, err := strconv.Atoi(aspect[0])
 	if err != nil {
@@ -123,6 +131,7 @@ func main() {
 		log.Print("aspect ratio is", aspectWidth, "by", aspectHeight)
 	}
 
+	// calculate the output resolution and bitrate based on that
 	outputWidth := int(math.Round(float64(inputWidth)*outScale*float64(aspectWidth))/2) * 2
 	outputHeight := int(math.Round(float64(inputHeight)*outScale*float64(aspectHeight))/2) * 2
 	if videoBrDiv != -1 {
@@ -153,6 +162,18 @@ func main() {
 		filter = filter + ",interlace"
 	}
 
+	// corruption calculations based on width and height
+	if corrupt != -1 {
+		corruptAmount = int(float64(outputHeight*outputWidth) / float64(bitrate) * 100000.0 / float64(corrupt*3))
+		corruptFilter = "noise=" + strconv.Itoa(corruptAmount)
+		if debug {
+			log.Print("corrupt amount is", corruptAmount)
+			log.Print("(", outputHeight, " * ", outputWidth, ")", " / 2073600 * 1000000", " / ", "(", corrupt, "* 10)")
+			log.Print("corrupt filter is -bsf ", corruptFilter)
+		}
+	}
+
+	// ffmpeg args
 	args := []string{
 		"-y",
 		"-i", input,
@@ -162,13 +183,17 @@ func main() {
 		"-c:a", "aac",
 		"-b:a", strconv.Itoa(int(audioBitrate)),
 		"-filter_complex", "fps=" + strconv.Itoa(outFPS) + ",scale=" + strconv.Itoa(outputWidth) + ":" + strconv.Itoa(outputHeight) + ",setsar=1:1" + filter,
-		output,
 	}
+	if corrupt != -1 {
+		args = append(args, "-bsf", corruptFilter)
+	}
+	args = append(args, output)
 
 	if debug {
 		log.Print(args)
 	}
 
+	// encode
 	cmd := exec.Command("ffmpeg", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -179,7 +204,7 @@ func main() {
 	}
 }
 
-// move to other file when it decides to actually work
+// all following functions move to other file when it decides to actually work
 func getDuration(input string) (float64, error) {
 	args := []string{
 		"-i", input,
