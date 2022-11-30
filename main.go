@@ -27,6 +27,8 @@ var (
 	corrupt       int
 	stretch       string
 	bitrate       int
+	fadein        float64
+	fadeout       float64
 	audioBitrate  int
 	corruptAmount int
 	corruptFilter string
@@ -51,6 +53,8 @@ func init() {
 	pflag.BoolVar(&resample, "resample", false, "Blend frames together instead of dropping them")
 	pflag.IntVar(&speed, "speed", 1, "Specify the video and audio speed")
 	pflag.IntVar(&corrupt, "corrupt", -1, "Corrupt the output")
+	pflag.Float64Var(&fadein, "fade-in", -1, "Fade in duration")
+	pflag.Float64Var(&fadeout, "fade-out", -1, "Fade out duration")
 	pflag.Parse()
 
 	if input == "" {
@@ -166,16 +170,30 @@ func main() {
 		log.Print("bitrate is", bitrate, "which i got by doing", outputHeight, "*", outputWidth, "*", int(math.Sqrt(float64(outFPS))), "/", preset)
 	}
 
+	if fadein != -1 {
+		filter = filter + ",fade=t=in:d=" + strconv.FormatFloat(fadein, 'f', -1, 64)
+		if debug {
+			log.Print("fade in is", fadein)
+		}
+	}
+
+	if fadeout != -1 {
+		filter = filter + ",fade=t=out:d=" + strconv.FormatFloat(fadeout, 'f', -1, 64) + ":st=" + strconv.FormatFloat((inputDuration-fadeout), 'f', -1, 64)
+		if debug {
+			log.Print("fade out duration is", fadeout, "start time is", (inputDuration - fadeout))
+		}
+	}
+
+	if interlace {
+		filter = filter + ",interlace"
+	}
+
 	if speed != 1 {
 		filter = ",setpts=(1/" + strconv.Itoa(speed) + ")*PTS;atempo=" + strconv.Itoa(speed)
 	}
 
 	if lagfun {
 		filter = filter + ",lagfun"
-	}
-
-	if interlace {
-		filter = filter + ",interlace"
 	}
 
 	// corruption calculations based on width and height
