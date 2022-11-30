@@ -27,6 +27,7 @@ var (
 	stutter       int
 	stretch       string
 	bitrate       int
+	volume        int
 	fadein        float64
 	fadeout       float64
 	zoom          float64
@@ -44,22 +45,23 @@ func init() {
 	pflag.BoolVarP(&debug, "debug", "d", false, "Print out debug information")
 	pflag.IntVarP(&preset, "preset", "p", 4, "Specify the quality preset")
 	pflag.Float64VarP(&outScale, "scale", "s", -1, "Specify the output scale")
-	pflag.IntVar(&outFPS, "fps", -1, "Specify the output fps")
 	pflag.IntVar(&videoBrDiv, "video-bitrate", -1, "Specify the video bitrate divisor")
 	pflag.IntVar(&videoBrDiv, "vb", videoBrDiv, "Shorthand for --video-bitrate")
 	pflag.IntVar(&audioBrDiv, "audio-bitrate", -1, "Specify the audio bitrate divisor")
 	pflag.IntVar(&audioBrDiv, "ab", audioBrDiv, "Shorthand for --audio-bitrate")
 	pflag.StringVar(&stretch, "stretch", "1:1", "Modify the existing aspect ratio")
 	pflag.BoolVar(&interlace, "interlace", false, "Interlace the output")
-	pflag.BoolVar(&lagfun, "lagfun", false, "Force darker pixels to update slower")
-	pflag.BoolVar(&resample, "resample", false, "Blend frames together instead of dropping them")
+	pflag.IntVar(&outFPS, "fps", -1, "Specify the output fps")
 	pflag.IntVar(&speed, "speed", 1, "Specify the video and audio speed")
-	pflag.IntVar(&corrupt, "corrupt", 0, "Corrupt the output")
-	pflag.IntVar(&stutter, "stutter", 0, "Randomize the order of a frames")
+	pflag.Float64VarP(&zoom, "zoom", "z", 1, "Specify the amount to zoom in or out")
 	pflag.Float64Var(&fadein, "fade-in", 0, "Fade in duration")
 	pflag.Float64Var(&fadeout, "fade-out", 0, "Fade out duration")
-	pflag.Float64VarP(&zoom, "zoom", "z", 1, "Specify the amount to zoom in or out")
-	pflag.Float64VarP(&vignette, "vignette", "v", 0, "Specify the amount of vignette")
+	pflag.IntVar(&stutter, "stutter", 0, "Randomize the order of a frames")
+	pflag.Float64Var(&vignette, "vignette", 0, "Specify the amount of vignette")
+	pflag.IntVar(&corrupt, "corrupt", 0, "Corrupt the output")
+	pflag.BoolVar(&lagfun, "lagfun", false, "Force darker pixels to update slower")
+	pflag.BoolVar(&resample, "resample", false, "Blend frames together instead of dropping them")
+	pflag.IntVarP(&volume, "volume", "v", 0, "Specify the amount to increase or decrease the volume by")
 	pflag.Parse()
 
 	if input == "" {
@@ -225,6 +227,13 @@ func main() {
 		filter.WriteString(",random=frames=" + strconv.Itoa(stutter))
 		if debug {
 			log.Print("stutter is ", stutter)
+		}
+	}
+
+	if volume != 0 {
+		filter.WriteString(";volume=" + strconv.Itoa(volume))
+		if debug {
+			log.Print("volume is ", volume)
 		}
 	}
 
