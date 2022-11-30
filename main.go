@@ -30,6 +30,7 @@ var (
 	audioBitrate  int
 	corruptAmount int
 	corruptFilter string
+	resample      bool
 )
 
 func init() {
@@ -47,6 +48,7 @@ func init() {
 	pflag.StringVar(&stretch, "stretch", "1:1", "Modify the existing aspect ratio")
 	pflag.BoolVar(&interlace, "interlace", false, "Interlace the output")
 	pflag.BoolVar(&lagfun, "lagfun", false, "Force darker pixels to update slower")
+	pflag.BoolVar(&resample, "resample", false, "Blend frames together instead of dropping them")
 	pflag.IntVar(&speed, "speed", 1, "Specify the video and audio speed")
 	pflag.IntVar(&corrupt, "corrupt", -1, "Corrupt the output")
 	pflag.Parse()
@@ -105,6 +107,20 @@ func main() {
 	if outFPS == -1 {
 		outFPS = 24 - (3 * preset)
 	}
+	var fpsFilter string = "fps=" + strconv.Itoa(outFPS)
+	var tmixFrames int = 0
+	if resample {
+		if outFPS <= int(inputFPS) {
+			tmixFrames = int(inputFPS) / outFPS
+			fpsFilter = "tmix=frames=" + strconv.Itoa(tmixFrames) + ":weights=1,fps=" + strconv.Itoa(outFPS)
+			if debug {
+				log.Print("resampling with tmix, tmix frames ", tmixFrames)
+			}
+		} else {
+			log.Fatal("Cannot resample from a lower framerate to a higher framerate (output fps exceeds input fps)")
+		}
+	}
+
 	if debug {
 		log.Print("Output FPS is", outFPS)
 	}
@@ -182,7 +198,7 @@ func main() {
 		"-b:v", strconv.Itoa(int(bitrate)),
 		"-c:a", "aac",
 		"-b:a", strconv.Itoa(int(audioBitrate)),
-		"-filter_complex", "fps=" + strconv.Itoa(outFPS) + ",scale=" + strconv.Itoa(outputWidth) + ":" + strconv.Itoa(outputHeight) + ",setsar=1:1" + filter,
+		"-filter_complex", fpsFilter + ",scale=" + strconv.Itoa(outputWidth) + ":" + strconv.Itoa(outputHeight) + ",setsar=1:1" + filter,
 	}
 	if corrupt != -1 {
 		args = append(args, "-bsf", corruptFilter)
