@@ -30,6 +30,7 @@ var (
 	fadein        float64
 	fadeout       float64
 	zoom          float64
+	vignette      float64
 	audioBitrate  int
 	corruptAmount int
 	corruptFilter string
@@ -57,6 +58,7 @@ func init() {
 	pflag.Float64Var(&fadein, "fade-in", 0, "Fade in duration")
 	pflag.Float64Var(&fadeout, "fade-out", 0, "Fade out duration")
 	pflag.Float64VarP(&zoom, "zoom", "z", 1, "Specify the amount to zoom in or out")
+	pflag.Float64VarP(&vignette, "vignette", "v", 0, "Specify the amount of vignette")
 	pflag.Parse()
 
 	if input == "" {
@@ -192,6 +194,13 @@ func main() {
 		filter += ",zoompan=d=1:zoom=" + strconv.FormatFloat(zoom, 'f', -1, 64) + ":fps=" + strconv.Itoa(outFPS) + ":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
 		if debug {
 			log.Print("zoom amount is ", zoom)
+		}
+	}
+
+	if vignette != 0 {
+		filter += ",vignette=PI/(5/(" + strconv.FormatFloat(vignette, 'f', -1, 64) + "/2))"
+		if debug {
+			log.Print("vignette amount is ", vignette, " or PI/(5/("+strconv.FormatFloat(vignette, 'f', -1, 64)+"/2))")
 		}
 	}
 
