@@ -29,6 +29,7 @@ var (
 	bitrate       int
 	fadein        float64
 	fadeout       float64
+	zoom          float64
 	audioBitrate  int
 	corruptAmount int
 	corruptFilter string
@@ -52,9 +53,10 @@ func init() {
 	pflag.BoolVar(&lagfun, "lagfun", false, "Force darker pixels to update slower")
 	pflag.BoolVar(&resample, "resample", false, "Blend frames together instead of dropping them")
 	pflag.IntVar(&speed, "speed", 1, "Specify the video and audio speed")
-	pflag.IntVar(&corrupt, "corrupt", -1, "Corrupt the output")
-	pflag.Float64Var(&fadein, "fade-in", -1, "Fade in duration")
-	pflag.Float64Var(&fadeout, "fade-out", -1, "Fade out duration")
+	pflag.IntVar(&corrupt, "corrupt", 0, "Corrupt the output")
+	pflag.Float64Var(&fadein, "fade-in", 0, "Fade in duration")
+	pflag.Float64Var(&fadeout, "fade-out", 0, "Fade out duration")
+	pflag.Float64VarP(&zoom, "zoom", "z", 1, "Specify the amount to zoom in or out")
 	pflag.Parse()
 
 	if input == "" {
@@ -87,7 +89,7 @@ func main() {
 		log.Fatal(err)
 	}
 	if debug {
-		log.Print("duration is", inputDuration)
+		log.Print("duration is ", inputDuration)
 	}
 
 	inputFPS, err := getFramerate(input)
@@ -95,7 +97,7 @@ func main() {
 		log.Fatal(err)
 	}
 	if debug {
-		log.Print("fps is", inputFPS)
+		log.Print("fps is ", inputFPS)
 	}
 
 	inputWidth, inputHeight, err := getResolution(input)
@@ -104,10 +106,12 @@ func main() {
 	}
 
 	if debug {
-		log.Print("resolution is", inputWidth, "by", inputHeight)
+		log.Print("resolution is ", inputWidth, " by ", inputHeight)
 	}
 
 	// set up the args for the output
+
+	// fps and tmix
 	if outFPS == -1 {
 		outFPS = 24 - (3 * preset)
 	}
@@ -118,7 +122,7 @@ func main() {
 			tmixFrames = int(inputFPS) / outFPS
 			fpsFilter = "tmix=frames=" + strconv.Itoa(tmixFrames) + ":weights=1,fps=" + strconv.Itoa(outFPS)
 			if debug {
-				log.Print("resampling with tmix, tmix frames ", tmixFrames)
+				log.Print("resampling with tmix, tmix frames ", tmixFrames, " and output fps is "+strconv.Itoa(outFPS))
 			}
 		} else {
 			log.Fatal("Cannot resample from a lower framerate to a higher framerate (output fps exceeds input fps)")
@@ -126,14 +130,14 @@ func main() {
 	}
 
 	if debug {
-		log.Print("Output FPS is", outFPS)
+		log.Print("Output FPS is ", outFPS)
 	}
 
 	if outScale == -1 {
 		outScale = 1.0 / float64(preset)
 	}
 	if debug {
-		log.Print("Output scale is", outScale)
+		log.Print("Output scale is ", outScale)
 	}
 
 	// stretch calculations
@@ -148,7 +152,7 @@ func main() {
 	}
 
 	if debug {
-		log.Print("aspect ratio is", aspectWidth, "by", aspectHeight)
+		log.Print("aspect ratio is ", aspectWidth, " by ", aspectHeight)
 	}
 
 	// calculate the output resolution and bitrate based on that
@@ -167,37 +171,47 @@ func main() {
 	}
 
 	if debug {
-		log.Print("bitrate is", bitrate, "which i got by doing", outputHeight, "*", outputWidth, "*", int(math.Sqrt(float64(outFPS))), "/", preset)
+		log.Print("bitrate is ", bitrate, " which i got by doing ", outputHeight, "*", outputWidth, "*", int(math.Sqrt(float64(outFPS))), "/", preset)
 	}
 
-	if fadein != -1 {
-		filter = filter + ",fade=t=in:d=" + strconv.FormatFloat(fadein, 'f', -1, 64)
+	if fadein != 0 {
+		filter += ",fade=t=in:d=" + strconv.FormatFloat(fadein, 'f', -1, 64)
 		if debug {
-			log.Print("fade in is", fadein)
+			log.Print("fade in is ", fadein)
 		}
 	}
 
-	if fadeout != -1 {
-		filter = filter + ",fade=t=out:d=" + strconv.FormatFloat(fadeout, 'f', -1, 64) + ":st=" + strconv.FormatFloat((inputDuration-fadeout), 'f', -1, 64)
+	if fadeout != 0 {
+		filter += ",fade=t=out:d=" + strconv.FormatFloat(fadeout, 'f', -1, 64) + ":st=" + strconv.FormatFloat((inputDuration-fadeout), 'f', -1, 64)
 		if debug {
-			log.Print("fade out duration is", fadeout, "start time is", (inputDuration - fadeout))
+			log.Print("fade out duration is ", fadeout, " start time is ", (inputDuration - fadeout))
+		}
+	}
+
+	if zoom != 1 {
+		filter += ",zoompan=d=1:zoom=" + strconv.FormatFloat(zoom, 'f', -1, 64) + ":fps=" + strconv.Itoa(outFPS) + ":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+		if debug {
+			log.Print("zoom amount is ", zoom)
 		}
 	}
 
 	if interlace {
-		filter = filter + ",interlace"
+		filter += ",interlace"
 	}
 
 	if speed != 1 {
 		filter = ",setpts=(1/" + strconv.Itoa(speed) + ")*PTS;atempo=" + strconv.Itoa(speed)
+		if debug {
+			log.Print("speed is ", speed)
+		}
 	}
 
 	if lagfun {
-		filter = filter + ",lagfun"
+		filter += ",lagfun"
 	}
 
 	// corruption calculations based on width and height
-	if corrupt != -1 {
+	if corrupt != 0 {
 		corruptAmount = int(float64(outputHeight*outputWidth) / float64(bitrate) * 100000.0 / float64(corrupt*3))
 		corruptFilter = "noise=" + strconv.Itoa(corruptAmount)
 		if debug {
@@ -218,7 +232,7 @@ func main() {
 		"-b:a", strconv.Itoa(int(audioBitrate)),
 		"-filter_complex", fpsFilter + ",scale=" + strconv.Itoa(outputWidth) + ":" + strconv.Itoa(outputHeight) + ",setsar=1:1" + filter,
 	}
-	if corrupt != -1 {
+	if corrupt != 0 {
 		args = append(args, "-bsf", corruptFilter)
 	}
 	args = append(args, output)
