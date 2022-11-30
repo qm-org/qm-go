@@ -22,9 +22,9 @@ var (
 	videoBrDiv    int
 	audioBrDiv    int
 	preset        int
-	filter        string
 	speed         int
 	corrupt       int
+	stutter       int
 	stretch       string
 	bitrate       int
 	fadein        float64
@@ -55,6 +55,7 @@ func init() {
 	pflag.BoolVar(&resample, "resample", false, "Blend frames together instead of dropping them")
 	pflag.IntVar(&speed, "speed", 1, "Specify the video and audio speed")
 	pflag.IntVar(&corrupt, "corrupt", 0, "Corrupt the output")
+	pflag.IntVar(&stutter, "stutter", 0, "Randomize the order of a frames")
 	pflag.Float64Var(&fadein, "fade-in", 0, "Fade in duration")
 	pflag.Float64Var(&fadeout, "fade-out", 0, "Fade out duration")
 	pflag.Float64VarP(&zoom, "zoom", "z", 1, "Specify the amount to zoom in or out")
@@ -76,7 +77,6 @@ func init() {
 			log.Fatal(err)
 		}
 	}
-
 }
 
 func main() {
@@ -176,47 +176,56 @@ func main() {
 		log.Print("bitrate is ", bitrate, " which i got by doing ", outputHeight, "*", outputWidth, "*", int(math.Sqrt(float64(outFPS))), "/", preset)
 	}
 
+	var filter strings.Builder
+
 	if fadein != 0 {
-		filter += ",fade=t=in:d=" + strconv.FormatFloat(fadein, 'f', -1, 64)
+		filter.WriteString(",fade=t=in:d=" + strconv.FormatFloat(fadein, 'f', -1, 64))
 		if debug {
 			log.Print("fade in is ", fadein)
 		}
 	}
 
 	if fadeout != 0 {
-		filter += ",fade=t=out:d=" + strconv.FormatFloat(fadeout, 'f', -1, 64) + ":st=" + strconv.FormatFloat((inputDuration-fadeout), 'f', -1, 64)
+		filter.WriteString(",fade=t=out:d=" + strconv.FormatFloat(fadeout, 'f', -1, 64) + ":st=" + strconv.FormatFloat((inputDuration-fadeout), 'f', -1, 64))
 		if debug {
 			log.Print("fade out duration is ", fadeout, " start time is ", (inputDuration - fadeout))
 		}
 	}
 
 	if zoom != 1 {
-		filter += ",zoompan=d=1:zoom=" + strconv.FormatFloat(zoom, 'f', -1, 64) + ":fps=" + strconv.Itoa(outFPS) + ":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+		filter.WriteString(",zoompan=d=1:zoom=" + strconv.FormatFloat(zoom, 'f', -1, 64) + ":fps=" + strconv.Itoa(outFPS) + ":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'")
 		if debug {
 			log.Print("zoom amount is ", zoom)
 		}
 	}
 
 	if vignette != 0 {
-		filter += ",vignette=PI/(5/(" + strconv.FormatFloat(vignette, 'f', -1, 64) + "/2))"
+		filter.WriteString(",vignette=PI/(5/(" + strconv.FormatFloat(vignette, 'f', -1, 64) + "/2))")
 		if debug {
 			log.Print("vignette amount is ", vignette, " or PI/(5/("+strconv.FormatFloat(vignette, 'f', -1, 64)+"/2))")
 		}
 	}
 
 	if interlace {
-		filter += ",interlace"
+		filter.WriteString(",interlace")
 	}
 
 	if speed != 1 {
-		filter = ",setpts=(1/" + strconv.Itoa(speed) + ")*PTS;atempo=" + strconv.Itoa(speed)
+		filter.WriteString(",setpts=(1/" + strconv.Itoa(speed) + ")*PTS;atempo=" + strconv.Itoa(speed))
 		if debug {
 			log.Print("speed is ", speed)
 		}
 	}
 
 	if lagfun {
-		filter += ",lagfun"
+		filter.WriteString(",lagfun")
+	}
+
+	if stutter != 0 {
+		filter.WriteString(",random=frames=" + strconv.Itoa(stutter))
+		if debug {
+			log.Print("stutter is ", stutter)
+		}
 	}
 
 	// corruption calculations based on width and height
@@ -239,7 +248,7 @@ func main() {
 		"-b:v", strconv.Itoa(int(bitrate)),
 		"-c:a", "aac",
 		"-b:a", strconv.Itoa(int(audioBitrate)),
-		"-filter_complex", fpsFilter + ",scale=" + strconv.Itoa(outputWidth) + ":" + strconv.Itoa(outputHeight) + ",setsar=1:1" + filter,
+		"-filter_complex", fpsFilter + ",scale=" + strconv.Itoa(outputWidth) + ":" + strconv.Itoa(outputHeight) + ",setsar=1:1" + filter.String(),
 	}
 	if corrupt != 0 {
 		args = append(args, "-bsf", corruptFilter)
