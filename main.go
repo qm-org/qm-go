@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -75,7 +76,10 @@ func init() {
 		log.Fatal("No input was specified")
 	}
 	if output == "" {
-		log.Fatal("No output was specified")
+		if debug {
+			log.Println("No output was specified, using input name plus (Quality Munched)")
+		}
+		output = strings.TrimSuffix(input, filepath.Ext(input)) + " (Quality Munched)" + ".mp4"
 	}
 	if start < 0 {
 		log.Fatal("Start time cannot be negative")
