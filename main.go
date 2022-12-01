@@ -221,63 +221,81 @@ func main() {
 		log.Print("bitrate is ", bitrate, " which i got by doing ", outputHeight, "*", outputWidth, "*", int(math.Sqrt(float64(outFPS))), "/", preset)
 	}
 
+	// set up the ffmpeg filter for -filter_complex
 	var filter strings.Builder
 
-	if fadein != 0 {
-		filter.WriteString(",fade=t=in:d=" + strconv.FormatFloat(fadein, 'f', -1, 64))
-		if debug {
-			log.Print("fade in is ", fadein)
+	if !(noVideo) {
+		filter.WriteString(fpsFilter + ",scale=" + strconv.Itoa(outputWidth) + ":" + strconv.Itoa(outputHeight) + ",setsar=1:1")
+
+		if fadein != 0 {
+			filter.WriteString(",fade=t=in:d=" + strconv.FormatFloat(fadein, 'f', -1, 64))
+			if debug {
+				log.Print("fade in is ", fadein)
+			}
 		}
-	}
 
-	if fadeout != 0 {
-		filter.WriteString(",fade=t=out:d=" + strconv.FormatFloat(fadeout, 'f', -1, 64) + ":st=" + strconv.FormatFloat((inputDuration-fadeout), 'f', -1, 64))
-		if debug {
-			log.Print("fade out duration is ", fadeout, " start time is ", (inputDuration - fadeout))
+		if fadeout != 0 {
+			filter.WriteString(",fade=t=out:d=" + strconv.FormatFloat(fadeout, 'f', -1, 64) + ":st=" + strconv.FormatFloat((inputDuration-fadeout), 'f', -1, 64))
+			if debug {
+				log.Print("fade out duration is ", fadeout, " start time is ", (inputDuration - fadeout))
+			}
 		}
-	}
 
-	if zoom != 1 {
-		filter.WriteString(",zoompan=d=1:zoom=" + strconv.FormatFloat(zoom, 'f', -1, 64) + ":fps=" + strconv.Itoa(outFPS) + ":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'")
-		if debug {
-			log.Print("zoom amount is ", zoom)
+		if zoom != 1 {
+			filter.WriteString(",zoompan=d=1:zoom=" + strconv.FormatFloat(zoom, 'f', -1, 64) + ":fps=" + strconv.Itoa(outFPS) + ":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'")
+			if debug {
+				log.Print("zoom amount is ", zoom)
+			}
 		}
-	}
 
-	if vignette != 0 {
-		filter.WriteString(",vignette=PI/(5/(" + strconv.FormatFloat(vignette, 'f', -1, 64) + "/2))")
-		if debug {
-			log.Print("vignette amount is ", vignette, " or PI/(5/("+strconv.FormatFloat(vignette, 'f', -1, 64)+"/2))")
+		if vignette != 0 {
+			filter.WriteString(",vignette=PI/(5/(" + strconv.FormatFloat(vignette, 'f', -1, 64) + "/2))")
+			if debug {
+				log.Print("vignette amount is ", vignette, " or PI/(5/("+strconv.FormatFloat(vignette, 'f', -1, 64)+"/2))")
+			}
 		}
-	}
 
-	if interlace {
-		filter.WriteString(",interlace")
-	}
-
-	if speed != 1 {
-		filter.WriteString(",setpts=(1/" + strconv.Itoa(speed) + ")*PTS;atempo=" + strconv.Itoa(speed))
-		if debug {
-			log.Print("speed is ", speed)
+		if interlace {
+			filter.WriteString(",interlace")
 		}
-	}
 
-	if lagfun {
-		filter.WriteString(",lagfun")
-	}
-
-	if stutter != 0 {
-		filter.WriteString(",random=frames=" + strconv.Itoa(stutter))
-		if debug {
-			log.Print("stutter is ", stutter)
+		if speed != 1 {
+			filter.WriteString(",setpts=(1/" + strconv.Itoa(speed) + ")*PTS")
+			if debug {
+				log.Print("speed is ", speed)
+			}
 		}
+
+		if lagfun {
+			filter.WriteString(",lagfun")
+		}
+
+		if stutter != 0 {
+			filter.WriteString(",random=frames=" + strconv.Itoa(stutter))
+			if debug {
+				log.Print("stutter is ", stutter)
+			}
+		}
+	} else {
+		log.Print("no video, ignoring all video filters")
 	}
 
-	if volume != 0 {
-		filter.WriteString(";volume=" + strconv.Itoa(volume))
-		if debug {
-			log.Print("volume is ", volume)
+	if !(noAudio) {
+		if volume != 0 {
+			filter.WriteString(";volume=" + strconv.Itoa(volume))
+			if debug {
+				log.Print("volume is ", volume)
+			}
 		}
+
+		if speed != 1 {
+			filter.WriteString(";atempo=" + strconv.Itoa(speed))
+			if debug {
+				log.Print("audio speed is ", speed)
+			}
+		}
+	} else {
+		log.Print("no audio, ignoring all audio filters")
 	}
 
 	// corruption calculations based on width and height
@@ -323,8 +341,10 @@ func main() {
 		"-b:v", strconv.Itoa(int(bitrate)),
 		"-c:a", "aac",
 		"-b:a", strconv.Itoa(int(audioBitrate)),
-		"-filter_complex", fpsFilter+",scale="+strconv.Itoa(outputWidth)+":"+strconv.Itoa(outputHeight)+",setsar=1:1"+filter.String(),
 	)
+	if len(filter.String()) != 0 {
+		args = append(args, "-filter_complex", filter.String())
+	}
 	if corrupt != 0 {
 		args = append(args, "-bsf", corruptFilter)
 	}
