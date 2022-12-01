@@ -36,6 +36,7 @@ var (
 	lagfun                  bool
 	resample                bool
 	corruptAmount           int
+
 	// other variables
 	audioBitrate  int
 	corruptFilter string
@@ -135,6 +136,7 @@ func main() {
 	}
 
 	// get needed information from input video
+
 	inputDuration, err := getDuration(input)
 	if err != nil {
 		log.Fatal(err)
@@ -155,7 +157,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	if debug {
 		log.Print("resolution is ", inputWidth, " by ", inputHeight)
 	}
@@ -228,6 +229,7 @@ func main() {
 	// set up the ffmpeg filter for -filter_complex
 	var filter strings.Builder
 
+	// if NOT using --no-video, set add the specified video filters to filter
 	if !(noVideo) {
 		filter.WriteString(fpsFilter + ",scale=" + strconv.Itoa(outputWidth) + ":" + strconv.Itoa(outputHeight) + ",setsar=1:1")
 
@@ -284,6 +286,7 @@ func main() {
 		log.Print("no video, ignoring all video filters")
 	}
 
+	// if NOT using --no-audio, set add the specified audio filters to filter
 	if !(noAudio) {
 		if volume != 0 {
 			filter.WriteString(";volume=" + strconv.Itoa(volume))
@@ -315,25 +318,25 @@ func main() {
 
 	// ffmpeg args
 	args := []string{
-		"-y",
+		"-y", // forces overwrite of existing file, if one does exist
 	}
 	if start != 0 {
-		args = append(args, "-ss", strconv.FormatFloat(start, 'f', -1, 64))
+		args = append(args, "-ss", strconv.FormatFloat(start, 'f', -1, 64)) // -ss is the start time
 	}
 	if end != -1 {
 		outDuration = end - start
 	}
 	if outDuration != -1 {
-		args = append(args, "-t", strconv.FormatFloat(outDuration, 'f', -1, 64))
+		args = append(args, "-t", strconv.FormatFloat(outDuration, 'f', -1, 64)) // -t sets the duration
 	}
 	if noVideo {
-		args = append(args, "-vn")
+		args = append(args, "-vn") // removes video
 		if debug {
 			log.Print("no video")
 		}
 	}
 	if noAudio {
-		args = append(args, "-an")
+		args = append(args, "-an") // removes audio
 		if debug {
 			log.Print("no audio")
 		}
@@ -346,10 +349,10 @@ func main() {
 		"-c:a", "aac",
 		"-b:a", strconv.Itoa(int(audioBitrate)),
 	)
-	if len(filter.String()) != 0 {
+	if len(filter.String()) != 0 { // if filter is not empty, add the flag for setting the complex filter to the ffmpeg args
 		args = append(args, "-filter_complex", filter.String())
 	}
-	if corrupt != 0 {
+	if corrupt != 0 { // if corrupt isn't default, add the corrupt filter to the ffmpeg args
 		args = append(args, "-bsf", corruptFilter)
 	}
 	args = append(args, output)
@@ -369,7 +372,7 @@ func main() {
 	}
 }
 
-// all following functions move to other file when it decides to actually work
+// all following functions should be moved to another file, at least when i figure out how to make it work
 func getDuration(input string) (float64, error) {
 	args := []string{
 		"-i", input,
@@ -385,9 +388,9 @@ func getDuration(input string) (float64, error) {
 	}
 
 	outs := string(out)
-	outs = strings.TrimSuffix(outs, "\n")
-	outs = strings.TrimSuffix(outs, "\r")
-	outs = strings.TrimSuffix(outs, "\n")
+	outs = strings.TrimSuffix(outs, "\n") // removing the newline at the end of the output
+	outs = strings.TrimSuffix(outs, "\r") // windows includes a carriage return, so we remove that too
+	outs = strings.TrimSuffix(outs, "\n") // just in case there's a newline after the carriage return, because why not
 
 	outf, err := strconv.ParseFloat(outs, 64)
 	if err != nil {
@@ -413,9 +416,9 @@ func getFramerate(input string) (float64, error) {
 	}
 
 	outs := string(out)
-	outs = strings.TrimSuffix(outs, "\n")
-	outs = strings.TrimSuffix(outs, "\r")
-	outs = strings.TrimSuffix(outs, "\n")
+	outs = strings.TrimSuffix(outs, "\n") // removing the newline at the end of the output
+	outs = strings.TrimSuffix(outs, "\r") // windows includes a carriage return, so we remove that too
+	outs = strings.TrimSuffix(outs, "\n") // just in case there's a newline after the carriage return, because why not
 	outl := strings.Split(outs, "/")
 
 	if len(outl) != 2 {
@@ -451,9 +454,9 @@ func getResolution(input string) (int, int, error) {
 
 	outs := string(out)
 
-	outs = strings.TrimSuffix(outs, "\n")
-	outs = strings.TrimSuffix(outs, "\r")
-	outs = strings.TrimSuffix(outs, "\n")
+	outs = strings.TrimSuffix(outs, "\n") // removing the newline at the end of the output
+	outs = strings.TrimSuffix(outs, "\r") // windows includes a carriage return, so we remove that too
+	outs = strings.TrimSuffix(outs, "\n") // just in case there's a newline after the carriage return, because why not
 	outl := strings.Split(outs, ",")
 
 	if len(outl) != 2 {
