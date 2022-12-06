@@ -17,6 +17,7 @@ var (
 	// flags
 	input, output           string
 	debug                   bool
+	loglevel                string
 	noVideo, noAudio        bool
 	preset                  int
 	start, end, outDuration float64
@@ -25,7 +26,7 @@ var (
 	videoBrDiv, audioBrDiv  int
 	stretch                 string
 	outFPS                  int
-	speed                   int
+	speed                   float64
 	zoom                    float64
 	bitrate                 int
 	fadein, fadeout         float64
@@ -47,6 +48,7 @@ func init() {
 	pflag.StringVarP(&input, "input", "i", "", "Specify the input file")
 	pflag.StringVarP(&output, "output", "o", "", "Specify the output file")
 	pflag.BoolVarP(&debug, "debug", "d", false, "Print out debug information")
+	pflag.StringVar(&loglevel, "loglevel", "error", "Specify the log level for ffmpeg")
 	pflag.BoolVar(&noVideo, "no-video", false, "Produces an output with no video")
 	pflag.BoolVar(&noAudio, "no-audio", false, "Produces an output with no audio")
 	pflag.IntVarP(&preset, "preset", "p", 4, "Specify the quality preset")
@@ -61,7 +63,7 @@ func init() {
 	pflag.IntVar(&audioBrDiv, "ab", audioBrDiv, "Shorthand for --audio-bitrate")
 	pflag.StringVar(&stretch, "stretch", "1:1", "Modify the existing aspect ratio")
 	pflag.IntVar(&outFPS, "fps", -1, "Specify the output fps")
-	pflag.IntVar(&speed, "speed", 1, "Specify the video and audio speed")
+	pflag.Float64Var(&speed, "speed", 1.0, "Specify the video and audio speed")
 	pflag.Float64VarP(&zoom, "zoom", "z", 1, "Specify the amount to zoom in or out")
 	pflag.Float64Var(&fadein, "fade-in", 0, "Fade in duration")
 	pflag.Float64Var(&fadeout, "fade-out", 0, "Fade out duration")
@@ -231,6 +233,14 @@ func main() {
 
 	// if NOT using --no-video, set add the specified video filters to filter
 	if !(noVideo) {
+
+		if speed != 1 {
+			filter.WriteString("setpts=(1/" + strconv.FormatFloat(speed, 'f', -1, 64) + ")*PTS,")
+			if debug {
+				log.Print("speed is ", speed)
+			}
+		}
+
 		filter.WriteString(fpsFilter + ",scale=" + strconv.Itoa(outputWidth) + ":" + strconv.Itoa(outputHeight) + ",setsar=1:1")
 
 		if fadein != 0 {
@@ -265,13 +275,6 @@ func main() {
 			filter.WriteString(",interlace")
 		}
 
-		if speed != 1 {
-			filter.WriteString(",setpts=(1/" + strconv.Itoa(speed) + ")*PTS")
-			if debug {
-				log.Print("speed is ", speed)
-			}
-		}
-
 		if lagfun {
 			filter.WriteString(",lagfun")
 		}
@@ -296,7 +299,7 @@ func main() {
 		}
 
 		if speed != 1 {
-			filter.WriteString(";atempo=" + strconv.Itoa(speed))
+			filter.WriteString(";atempo=" + strconv.FormatFloat(speed, 'f', -1, 64))
 			if debug {
 				log.Print("audio speed is ", speed)
 			}
@@ -342,6 +345,8 @@ func main() {
 		}
 	}
 	args = append(args,
+		// "-stats_period", "0.1",
+		"-loglevel", loglevel,
 		"-i", input,
 		"-preset", "ultrafast",
 		"-c:v", "libx264",
@@ -363,6 +368,7 @@ func main() {
 
 	// encode
 	cmd := exec.Command("ffmpeg", args...)
+
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		if debug {
