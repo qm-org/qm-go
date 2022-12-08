@@ -28,33 +28,36 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/flopp/go-findfont"
 	"github.com/spf13/pflag"
 )
 
 var (
 	// flags
-	input, output           string
-	debug                   bool
-	loglevel                string
-	noVideo, noAudio        bool
-	preset                  int
-	start, end, outDuration float64
-	volume                  int
-	outScale                float64
-	videoBrDiv, audioBrDiv  int
-	stretch                 string
-	outFPS                  int
-	speed                   float64
-	zoom                    float64
-	bitrate                 int
-	fadein, fadeout         float64
-	stutter                 int
-	vignette                float64
-	corrupt                 int
-	interlace               bool
-	lagfun                  bool
-	resample                bool
-	corruptAmount           int
+	input, output             string
+	debug                     bool
+	loglevel                  string
+	noVideo, noAudio          bool
+	preset                    int
+	start, end, outDuration   float64
+	volume                    int
+	outScale                  float64
+	videoBrDiv, audioBrDiv    int
+	stretch                   string
+	outFPS                    int
+	speed                     float64
+	zoom                      float64
+	bitrate                   int
+	fadein, fadeout           float64
+	stutter                   int
+	vignette                  float64
+	corrupt                   int
+	interlace                 bool
+	lagfun                    bool
+	resample                  bool
+	corruptAmount             int
+	text, textFont, textColor string
+	textposx, textposy        int
 
 	// other variables
 	audioBitrate  int
@@ -91,6 +94,11 @@ func init() {
 	pflag.BoolVar(&interlace, "interlace", false, "Interlace the output")
 	pflag.BoolVar(&lagfun, "lagfun", false, "Force darker pixels to update slower")
 	pflag.BoolVar(&resample, "resample", false, "Blend frames together instead of dropping them")
+	pflag.StringVarP(&text, "text", "t", "", "Text to add (if empty, no text)")
+	pflag.StringVar(&textFont, "text-font", "arial", "Text to add (if empty, no text)")
+	pflag.StringVar(&textColor, "text-color", "white", "Text color")
+	pflag.IntVar(&textposx, "text-pos-x", 50, "horizontal position of text, 0 is far left, 100 is far right")
+	pflag.IntVar(&textposy, "text-pos-y", 90, "vertical position of text, 0 is top, 100 is bottom")
 	pflag.Parse()
 
 	if input == "" {
@@ -152,6 +160,9 @@ func main() {
 			lagfun,
 			resample,
 			volume,
+			text,
+			textposx,
+			textposy,
 		)
 	}
 
@@ -286,6 +297,19 @@ func main() {
 			filter.WriteString(",vignette=PI/(5/(" + strconv.FormatFloat(vignette, 'f', -1, 64) + "/2))")
 			if debug {
 				log.Print("vignette amount is ", vignette, " or PI/(5/("+strconv.FormatFloat(vignette, 'f', -1, 64)+"/2))")
+			}
+		}
+
+		if text != "" {
+			fontPath, err := findfont.Find(textFont + ".ttf")
+			if err != nil {
+				panic(err)
+			}
+			log.Print(fontPath)
+			filter.WriteString(",drawtext=fontfile='" + fontPath + "':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + strconv.Itoa(outputWidth/len(text)*2) + "/12):fontsize=" + strconv.Itoa(outputWidth/len(text)*2) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
+			if debug {
+				log.Print("text is ", text)
+				log.Print(",drawtext=fontfile='" + fontPath + "':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + string(outputWidth/len(text)*2) + "/12):fontsize=" + strconv.Itoa(outputWidth/len(text)*2) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
 			}
 		}
 
