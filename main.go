@@ -39,6 +39,7 @@ var (
 	debug                     bool
 	loglevel                  string
 	noVideo, noAudio          bool
+	replaceAudio              string
 	preset                    int
 	start, end, outDuration   float64
 	volume                    int
@@ -74,6 +75,7 @@ func init() {
 	pflag.StringVar(&loglevel, "loglevel", "error", "Specify the log level for ffmpeg")
 	pflag.BoolVar(&noVideo, "no-video", false, "Produces an output with no video")
 	pflag.BoolVar(&noAudio, "no-audio", false, "Produces an output with no audio")
+	pflag.StringVar(&replaceAudio, "replace-audio", "", "Replace the audio with the specified file")
 	pflag.IntVarP(&preset, "preset", "p", 4, "Specify the quality preset")
 	pflag.Float64Var(&start, "start", 0, "Specify the start time of the output")
 	pflag.Float64Var(&end, "end", -1, "Specify the end time of the output, cannot be used when duration is specified")
@@ -164,8 +166,11 @@ func main() {
 			resample,
 			volume,
 			text,
+			textFont,
+			textColor,
 			textposx,
 			textposy,
+			fontSize,
 		)
 	}
 
@@ -406,7 +411,15 @@ func main() {
 		// "-stats_period", "0.1",
 		"-loglevel", loglevel,
 		"-i", input,
+	)
+	if replaceAudio != "" {
+		args = append(args, "-i", replaceAudio)
+		args = append(args, "-map", "0:v:0")
+		args = append(args, "-map", "1:a:0")
+	}
+	args = append(args,
 		"-preset", "ultrafast",
+		"-shortest",
 		"-c:v", "libx264",
 		"-b:v", strconv.Itoa(int(bitrate)),
 		"-c:a", "aac",
