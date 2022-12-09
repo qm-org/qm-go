@@ -20,6 +20,7 @@ package main
 
 import (
 	"errors"
+	"io/ioutil"
 	"log"
 	"math"
 	"os"
@@ -58,6 +59,7 @@ var (
 	corruptAmount             int
 	text, textFont, textColor string
 	textposx, textposy        int
+	fontSize                  float64
 
 	// other variables
 	audioBitrate  int
@@ -99,6 +101,7 @@ func init() {
 	pflag.StringVar(&textColor, "text-color", "white", "Text color")
 	pflag.IntVar(&textposx, "text-pos-x", 50, "horizontal position of text, 0 is far left, 100 is far right")
 	pflag.IntVar(&textposy, "text-pos-y", 90, "vertical position of text, 0 is top, 100 is bottom")
+	pflag.Float64Var(&fontSize, "font-size", 12, "Font size (scales with output width")
 	pflag.Parse()
 
 	if input == "" {
@@ -305,11 +308,24 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
+			if err := os.MkdirAll("temp", os.ModePerm); err != nil {
+				log.Fatal(err)
+			}
+			input, err := ioutil.ReadFile(fontPath)
+			if err != nil {
+				log.Print(err)
+			}
+			err = ioutil.WriteFile("temp/font.ttf", input, 0644)
+			if err != nil {
+				log.Print("Error creating", "temp/font.ttf")
+				log.Print(err)
+				return
+			}
 			log.Print(fontPath)
-			filter.WriteString(",drawtext=fontfile='" + fontPath + "':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + strconv.Itoa(outputWidth/len(text)*2) + "/12):fontsize=" + strconv.Itoa(outputWidth/len(text)*2) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
+			filter.WriteString(",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + "/12):fontsize=" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
 			if debug {
 				log.Print("text is ", text)
-				log.Print(",drawtext=fontfile='" + fontPath + "':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + string(outputWidth/len(text)*2) + "/12):fontsize=" + strconv.Itoa(outputWidth/len(text)*2) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
+				log.Print(",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + string(outputWidth/len(text)*2) + "/12):fontsize=" + strconv.Itoa(outputWidth/len(text)*2) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
 			}
 		}
 
