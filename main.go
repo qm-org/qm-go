@@ -81,7 +81,7 @@ func init() {
 	pflag.BoolVarP(&debug, "debug", "d", false, "Print out debug information")
 	pflag.IntVar(&progbarLength, "progress-bar", -1, "Length of progress bar, defaults based on terminal width")
 	pflag.StringVar(&loglevel, "loglevel", "error", "Specify the log level for ffmpeg")
-	pflag.Float64Var(&updateSpeed, "update-speed", 0.005, "Specify the speed at which stats will be updated")
+	pflag.Float64Var(&updateSpeed, "update-speed", 0.0167, "Specify the speed at which stats will be updated")
 	pflag.BoolVar(&noVideo, "no-video", false, "Produces an output with no video")
 	pflag.BoolVar(&noAudio, "no-audio", false, "Produces an output with no audio")
 	pflag.StringVar(&replaceAudio, "replace-audio", "", "Replace the audio with the specified file")
@@ -364,6 +364,13 @@ func main() {
 		log.Print("no video, ignoring all video filters")
 	}
 
+	var realOutputDuration float64
+	if outDuration >= inputDuration || outDuration == -1 {
+		realOutputDuration = (inputDuration - start) / speed // if the output duration is longer than the input duration, set the output duration to the input duration times speed
+	} else {
+		realOutputDuration = outDuration / speed // if the output duration is shorter than the input duration, set the output duration to the output duration times speed
+	}
+
 	// if NOT using --no-audio, set add the specified audio filters to filter
 	if !(noAudio) {
 		if volume != 0 {
@@ -374,7 +381,12 @@ func main() {
 		}
 
 		if speed != 1 {
-			filter.WriteString(";atempo=" + strconv.FormatFloat(speed, 'f', -1, 64))
+			// use audio from second input if replacing audio
+			if replaceAudio != "" {
+				filter.WriteString(";[1]atempo=" + strconv.FormatFloat(speed, 'f', -1, 64))
+			} else {
+				filter.WriteString(";[0]atempo=" + strconv.FormatFloat(speed, 'f', -1, 64))
+			}
 			if debug {
 				log.Print("audio speed is ", speed)
 			}
@@ -431,6 +443,9 @@ func main() {
 		args = append(args, "-i", replaceAudio)
 		args = append(args, "-map", "0:v:0")
 		args = append(args, "-map", "1:a:0")
+		if debug {
+			log.Print("replacing audio")
+		}
 	}
 	args = append(args,
 		"-preset", "ultrafast",
@@ -452,13 +467,6 @@ func main() {
 		log.Print(args)
 	}
 
-	var realOutputDuration float64
-	if outDuration >= inputDuration || outDuration == -1 {
-		realOutputDuration = (inputDuration - start) / speed // if the output duration is longer than the input duration, set the output duration to the input duration times speed
-	} else {
-		realOutputDuration = outDuration / speed // if the output duration is shorter than the input duration, set the output duration to the output duration times speed
-	}
-
 	fmt.Println("Encoding file\033[96m", input, "\033[0mto\033[96m", output, "\033[0m")
 	if progbarLength == -1 {
 		progbarSet = false
@@ -471,39 +479,46 @@ func main() {
 	stderr, _ := cmd.StdoutPipe()
 	cmd.Start()
 
-	scannerTextAccum := ""
-	currentSpeed := ""
+	// progress bar and stats
+	scannerTextAccum := " "
+	eta := 0.0
 	currentFrame := 0
+	fullTime := ""
 	oldFrame := 0
-	avgFramerate := ""
-	lastSecAvgFramerate := ""
+	avgFramerate := " "
+	lastSecAvgFramerate := " "
 	startTime := time.Now()
 	changeStartTime := time.Now()
 	var currentTotalTime float64
-	if !progbarSet {
-		progbarLength = getProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " frame=" + strconv.Itoa(currentFrame) + " fps=" + avgFramerate + " fp1s=" + lastSecAvgFramerate + " speed=" + currentSpeed))
+	if !progbarSet { // if the progress bar length is not set, set it to the length of the longest possible progress bar
+		progbarLength = getProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " time: " + trimTime(fullTime) + " ETA: " + trimTime(formatTime(eta)) + " fps: " + avgFramerate + " fp1s: " + lastSecAvgFramerate))
 	}
 	fmt.Println(progressBar(0.0, realOutputDuration, progbarLength))
 	scanner := bufio.NewScanner(stderr)
 	scanner.Split(bufio.ScanRunes)
 	for scanner.Scan() {
-		scannerTextAccum += scanner.Text()
-		if scanner.Text() == "\r" || scanner.Text() == "\n" {
-			if strings.Contains(scannerTextAccum, "time=") {
-				// log.Print(scannerTextAccum)
-				fullTime := strings.Split(strings.Split(scannerTextAccum, "\n")[0], "=")[1]
+		scannerTextAccum += scanner.Text()                    // accumulate the text from the scanner
+		if scanner.Text() == "\r" || scanner.Text() == "\n" { // if the scanner text is a newline or carriage return, process the accumulated text
+			if strings.Contains(scannerTextAccum, "time=") { // if the accumulated text contains the time, process it
+				fullTime = strings.Split(strings.Split(scannerTextAccum, "\n")[0], "=")[1]
 				hour, _ := strconv.Atoi(strings.Split(fullTime, ":")[0])
 				min, _ := strconv.Atoi(strings.Split(fullTime, ":")[1])
 				sec, _ := strconv.Atoi(strings.Split(strings.Split(fullTime, ":")[2], ".")[0])
-				milisec, _ := strconv.ParseFloat("0."+strings.Split(fullTime, ".")[1], 64)
-				if !progbarSet {
-					progbarLength = getProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " frame=" + strconv.Itoa(currentFrame) + " fps=" + avgFramerate + " fp1s=" + lastSecAvgFramerate + " speed=" + currentSpeed))
+				milisec, _ := strconv.ParseFloat("."+strings.Split(fullTime, ".")[1], 64)
+				fullTime = strings.Split(fullTime, ".")[0] + strconv.FormatFloat(milisec, 'f', 1, 64)[1:] + "s"
+				eta = time.Since(startTime).Seconds() * (realOutputDuration - currentTotalTime) / currentTotalTime
+				if !progbarSet { // if the progress bar length is not set, set it to the length of the longest possible progress bar
+					progbarLength = getProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " time: " + trimTime(fullTime) + " ETA: " + trimTime(formatTime(eta)) + " fps: " + avgFramerate + " fp1s: " + lastSecAvgFramerate))
 				}
 				currentTotalTime = float64(hour*3600+min*60+sec) + milisec
-				fmt.Print("\033[1A\033[0J", progressBar(currentTotalTime, realOutputDuration, progbarLength))
+				if progbarLength > 0 { // if the progress bar length is greater than 0, print the progress bar
+					fmt.Print("\033[1A\033[0J", progressBar(currentTotalTime, realOutputDuration, progbarLength))
+				} else {
+					fmt.Print("\033[1A\033[0J")
+				}
 				fmt.Print(" ", strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64), "%")
 			}
-			if strings.Contains(scannerTextAccum, "frame=") {
+			if strings.Contains(scannerTextAccum, "frame=") { // if the accumulated text contains the frame, process it
 				currentFrame, _ = strconv.Atoi(strings.Split(strings.Split(scannerTextAccum, "\n")[0], "=")[1])
 				avgFramerate = strconv.FormatFloat(float64(currentFrame)/time.Since(startTime).Seconds(), 'f', 1, 64)
 				if time.Since(changeStartTime).Seconds() >= 1 {
@@ -512,31 +527,66 @@ func main() {
 					changeStartTime = time.Now()
 				}
 			}
-			if strings.Contains(scannerTextAccum, "speed=") {
-				currentSpeed = strings.Split(strings.Split(scannerTextAccum, "\n")[0], "=")[1]
-				fmt.Print(" frame=", currentFrame)
-				fmt.Print(" fps=", avgFramerate)
-				fmt.Print(" fp1s=", lastSecAvgFramerate)
-				fmt.Print(" speed=", currentSpeed)
+			if strings.Contains(scannerTextAccum, "speed=") { // if the accumulated text contains the frame, process it
+				fmt.Print(" time: ", trimTime(fullTime))
+				fmt.Print(" ETA: ", trimTime(formatTime(eta)))
+				fmt.Print(" fps: ", avgFramerate)
+				fmt.Print(" fp1s: ", lastSecAvgFramerate)
 				fmt.Print("\n")
 			}
 			scannerTextAccum = "" // reset my concerns
 		}
 	}
 	cmd.Wait()
+	if progbarLength > 0 { // if the progress bar length is greater than 0, print the progress bar
+		fmt.Print("\033[1A\033[0J", progressBar(realOutputDuration, realOutputDuration, progbarLength))
+	} else {
+		fmt.Print("\033[1A\033[0J")
+	}
 	fmt.Print(
-		"\033[1A\033[0J", progressBar(realOutputDuration, realOutputDuration, progbarLength), " ",
-		strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64), "%",
-		" frame=", currentFrame,
-		" fps=", avgFramerate,
-		" fp1s=", lastSecAvgFramerate,
-		" speed=", currentSpeed, "\n",
+		" 100.0%",
+		" time: ", trimTime(fullTime),
+		" fps: ", avgFramerate,
+		" fp1s: ", lastSecAvgFramerate,
+		"\n",
 	)
+}
+
+func trimTime(time string) string {
+	firstchar := strings.Split(time, ":")[0]
+	if firstchar == "00" {
+		time = strings.Split(time, ":")[1] + ":" + strings.Split(time, ":")[2]
+		firstchar = strings.Split(time, ":")[0]
+		if firstchar == "00" {
+			time = strings.Split(time, ":")[1]
+			firstchar = time[0:1]
+			if firstchar == "0" {
+				time = time[1:]
+			}
+		}
+	}
+	return time
+}
+
+func formatTime(time float64) string {
+	hour := strconv.Itoa(int(time / 3600))
+	minute := strconv.Itoa(int(math.Mod(time, 3600) / 60))
+	second := strconv.FormatFloat(math.Mod(time, 60), 'f', 1, 64)
+	if len(minute) == 1 {
+		minute = "0" + minute
+	}
+	if len(hour) == 1 {
+		hour = "0" + hour
+	}
+	if len(strings.Split(second, ".")[0]) == 1 {
+		second = "0" + second
+	}
+	return hour + ":" + minute + ":" + second + "s"
 }
 
 func getProgbarSize(length int) int {
 	terminalWidth, _, _ := term.GetSize(int(os.Stdout.Fd()))
-	return terminalWidth - 9 - length
+	return terminalWidth - 7 - length
 }
 
 func progressBar(done float64, total float64, length int) string {
