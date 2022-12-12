@@ -34,6 +34,7 @@ import (
 
 	"github.com/flopp/go-findfont"
 	"github.com/spf13/pflag"
+	"golang.org/x/term"
 )
 
 var (
@@ -70,6 +71,7 @@ var (
 	// other variables
 	audioBitrate  int
 	corruptFilter string
+	progbarSet    bool
 )
 
 func init() {
@@ -77,9 +79,9 @@ func init() {
 	pflag.StringVarP(&input, "input", "i", "", "Specify the input file")
 	pflag.StringVarP(&output, "output", "o", "", "Specify the output file")
 	pflag.BoolVarP(&debug, "debug", "d", false, "Print out debug information")
-	pflag.IntVar(&progbarLength, "progress-bar", 100, "Length of progress bar, 0 to disable")
+	pflag.IntVar(&progbarLength, "progress-bar", -1, "Length of progress bar, defaults based on terminal width")
 	pflag.StringVar(&loglevel, "loglevel", "error", "Specify the log level for ffmpeg")
-	pflag.Float64Var(&updateSpeed, "update-speed", 0.01, "Specify the speed at which stats will be updated")
+	pflag.Float64Var(&updateSpeed, "update-speed", 0.005, "Specify the speed at which stats will be updated")
 	pflag.BoolVar(&noVideo, "no-video", false, "Produces an output with no video")
 	pflag.BoolVar(&noAudio, "no-audio", false, "Produces an output with no audio")
 	pflag.StringVar(&replaceAudio, "replace-audio", "", "Replace the audio with the specified file")
@@ -458,6 +460,11 @@ func main() {
 	}
 
 	fmt.Println("Encoding file\033[96m", input, "\033[0mto\033[96m", output, "\033[0m")
+	if progbarLength == -1 {
+		progbarSet = false
+	} else {
+		progbarSet = true
+	}
 	// encode
 	cmd := exec.Command("ffmpeg", args...)
 
@@ -473,7 +480,10 @@ func main() {
 	startTime := time.Now()
 	changeStartTime := time.Now()
 	var currentTotalTime float64
-	fmt.Println(progressBar(0.0, realOutputDuration, progbarLength-1))
+	if !progbarSet {
+		progbarLength = getProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " frame=" + strconv.Itoa(currentFrame) + " fps=" + avgFramerate + " fp1s=" + lastSecAvgFramerate + " speed=" + currentSpeed))
+	}
+	fmt.Println(progressBar(0.0, realOutputDuration, progbarLength))
 	scanner := bufio.NewScanner(stderr)
 	scanner.Split(bufio.ScanRunes)
 	for scanner.Scan() {
@@ -486,8 +496,11 @@ func main() {
 				min, _ := strconv.Atoi(strings.Split(fullTime, ":")[1])
 				sec, _ := strconv.Atoi(strings.Split(strings.Split(fullTime, ":")[2], ".")[0])
 				milisec, _ := strconv.ParseFloat("0."+strings.Split(fullTime, ".")[1], 64)
+				if !progbarSet {
+					progbarLength = getProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " frame=" + strconv.Itoa(currentFrame) + " fps=" + avgFramerate + " fp1s=" + lastSecAvgFramerate + " speed=" + currentSpeed))
+				}
 				currentTotalTime = float64(hour*3600+min*60+sec) + milisec
-				fmt.Print("\033[1A\033[0K", progressBar(currentTotalTime, realOutputDuration, progbarLength-1))
+				fmt.Print("\033[1A\033[0J", progressBar(currentTotalTime, realOutputDuration, progbarLength))
 				fmt.Print(" ", strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64), "%")
 			}
 			if strings.Contains(scannerTextAccum, "frame=") {
@@ -504,20 +517,26 @@ func main() {
 				fmt.Print(" frame=", currentFrame)
 				fmt.Print(" fps=", avgFramerate)
 				fmt.Print(" fp1s=", lastSecAvgFramerate)
-				fmt.Println(" speed=", currentSpeed)
+				fmt.Print(" speed=", currentSpeed)
+				fmt.Print("\n")
 			}
 			scannerTextAccum = "" // reset my concerns
 		}
 	}
 	cmd.Wait()
 	fmt.Print(
-		"\033[1A\033[0K", progressBar(realOutputDuration, realOutputDuration, progbarLength-1), " ",
+		"\033[1A\033[0J", progressBar(realOutputDuration, realOutputDuration, progbarLength), " ",
 		strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64), "%",
 		" frame=", currentFrame,
 		" fps=", avgFramerate,
 		" fp1s=", lastSecAvgFramerate,
 		" speed=", currentSpeed, "\n",
 	)
+}
+
+func getProgbarSize(length int) int {
+	terminalWidth, _, _ := term.GetSize(int(os.Stdout.Fd()))
+	return terminalWidth - 9 - length
 }
 
 func progressBar(done float64, total float64, length int) string {
