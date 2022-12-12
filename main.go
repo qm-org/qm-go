@@ -55,7 +55,6 @@ var (
 	outFPS                    int
 	speed                     float64
 	zoom                      float64
-	bitrate                   int
 	fadein, fadeout           float64
 	stutter                   int
 	vignette                  float64
@@ -72,6 +71,7 @@ var (
 	audioBitrate  int
 	corruptFilter string
 	progbarSet    bool
+	bitrate       int
 )
 
 func init() {
@@ -151,12 +151,16 @@ func main() {
 			input,
 			output,
 			debug,
+			progbarLength,
+			loglevel,
+			updateSpeed,
 			noVideo,
 			noAudio,
 			preset,
 			start,
 			end,
 			outDuration,
+			volume,
 			outScale,
 			videoBrDiv,
 			audioBrDiv,
@@ -164,7 +168,6 @@ func main() {
 			outFPS,
 			speed,
 			zoom,
-			bitrate,
 			fadein,
 			fadeout,
 			stutter,
@@ -173,7 +176,6 @@ func main() {
 			interlace,
 			lagfun,
 			resample,
-			volume,
 			text,
 			textFont,
 			textColor,
@@ -546,6 +548,7 @@ func main() {
 	fmt.Print(
 		" 100.0%",
 		" time: ", trimTime(fullTime),
+		" ETA: ", trimTime(formatTime(eta)),
 		" fps: ", avgFramerate,
 		" fp1s: ", lastSecAvgFramerate,
 		"\n",
