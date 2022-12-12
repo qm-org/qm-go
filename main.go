@@ -19,7 +19,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package main
 
 import (
+	"bufio"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"math"
@@ -28,6 +30,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/flopp/go-findfont"
 	"github.com/spf13/pflag"
@@ -37,7 +40,9 @@ var (
 	// flags
 	input, output             string
 	debug                     bool
+	progbarLength             int
 	loglevel                  string
+	updateSpeed               float64
 	noVideo, noAudio          bool
 	replaceAudio              string
 	preset                    int
@@ -72,7 +77,9 @@ func init() {
 	pflag.StringVarP(&input, "input", "i", "", "Specify the input file")
 	pflag.StringVarP(&output, "output", "o", "", "Specify the output file")
 	pflag.BoolVarP(&debug, "debug", "d", false, "Print out debug information")
+	pflag.IntVar(&progbarLength, "progress-bar", 100, "Length of progress bar, 0 to disable")
 	pflag.StringVar(&loglevel, "loglevel", "error", "Specify the log level for ffmpeg")
+	pflag.Float64Var(&updateSpeed, "update-speed", 0.01, "Specify the speed at which stats will be updated")
 	pflag.BoolVar(&noVideo, "no-video", false, "Produces an output with no video")
 	pflag.BoolVar(&noAudio, "no-audio", false, "Produces an output with no audio")
 	pflag.StringVar(&replaceAudio, "replace-audio", "", "Replace the audio with the specified file")
@@ -182,6 +189,9 @@ func main() {
 	}
 	if debug {
 		log.Print("duration is ", inputDuration)
+	}
+	if start >= inputDuration {
+		log.Fatal("Start time cannot be greater than or equal to input duration")
 	}
 
 	inputFPS, err := getFramerate(input)
@@ -410,6 +420,9 @@ func main() {
 	args = append(args,
 		// "-stats_period", "0.1",
 		"-loglevel", loglevel,
+		"-hide_banner",
+		"-progress", "-",
+		"-stats_period", strconv.FormatFloat(updateSpeed, 'f', -1, 64),
 		"-i", input,
 	)
 	if replaceAudio != "" {
@@ -437,16 +450,98 @@ func main() {
 		log.Print(args)
 	}
 
+	var realOutputDuration float64
+	if outDuration >= inputDuration || outDuration == -1 {
+		realOutputDuration = (inputDuration - start) / speed // if the output duration is longer than the input duration, set the output duration to the input duration times speed
+	} else {
+		realOutputDuration = outDuration / speed // if the output duration is shorter than the input duration, set the output duration to the output duration times speed
+	}
+
+	fmt.Println("Encoding file\033[96m", input, "\033[0mto\033[96m", output, "\033[0m")
 	// encode
 	cmd := exec.Command("ffmpeg", args...)
 
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		if debug {
-			log.Print(string(out))
+	stderr, _ := cmd.StdoutPipe()
+	cmd.Start()
+
+	scannerTextAccum := ""
+	currentSpeed := ""
+	currentFrame := 0
+	oldFrame := 0
+	avgFramerate := ""
+	lastSecAvgFramerate := ""
+	startTime := time.Now()
+	changeStartTime := time.Now()
+	var currentTotalTime float64
+	fmt.Println(progressBar(0.0, realOutputDuration, progbarLength-1))
+	scanner := bufio.NewScanner(stderr)
+	scanner.Split(bufio.ScanRunes)
+	for scanner.Scan() {
+		scannerTextAccum += scanner.Text()
+		if scanner.Text() == "\r" || scanner.Text() == "\n" {
+			if strings.Contains(scannerTextAccum, "time=") {
+				// log.Print(scannerTextAccum)
+				fullTime := strings.Split(strings.Split(scannerTextAccum, "\n")[0], "=")[1]
+				hour, _ := strconv.Atoi(strings.Split(fullTime, ":")[0])
+				min, _ := strconv.Atoi(strings.Split(fullTime, ":")[1])
+				sec, _ := strconv.Atoi(strings.Split(strings.Split(fullTime, ":")[2], ".")[0])
+				milisec, _ := strconv.ParseFloat("0."+strings.Split(fullTime, ".")[1], 64)
+				currentTotalTime = float64(hour*3600+min*60+sec) + milisec
+				fmt.Print("\033[1A\033[0K", progressBar(currentTotalTime, realOutputDuration, progbarLength-1))
+				fmt.Print(" ", strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64), "%")
+			}
+			if strings.Contains(scannerTextAccum, "frame=") {
+				currentFrame, _ = strconv.Atoi(strings.Split(strings.Split(scannerTextAccum, "\n")[0], "=")[1])
+				avgFramerate = strconv.FormatFloat(float64(currentFrame)/time.Since(startTime).Seconds(), 'f', 1, 64)
+				if time.Since(changeStartTime).Seconds() >= 1 {
+					lastSecAvgFramerate = strconv.FormatFloat(float64(currentFrame-oldFrame)/time.Since(changeStartTime).Seconds(), 'f', 1, 64)
+					oldFrame = currentFrame
+					changeStartTime = time.Now()
+				}
+			}
+			if strings.Contains(scannerTextAccum, "speed=") {
+				currentSpeed = strings.Split(strings.Split(scannerTextAccum, "\n")[0], "=")[1]
+				fmt.Print(" frame=", currentFrame)
+				fmt.Print(" fps=", avgFramerate)
+				fmt.Print(" fp1s=", lastSecAvgFramerate)
+				fmt.Println(" speed=", currentSpeed)
+			}
+			scannerTextAccum = "" // reset my concerns
 		}
-		log.Fatal(err)
 	}
+	cmd.Wait()
+	fmt.Print(
+		"\033[1A\033[0K", progressBar(realOutputDuration, realOutputDuration, progbarLength-1), " ",
+		strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64), "%",
+		" frame=", currentFrame,
+		" fps=", avgFramerate,
+		" fp1s=", lastSecAvgFramerate,
+		" speed=", currentSpeed, "\n",
+	)
+}
+
+func progressBar(done float64, total float64, length int) string {
+	// add comments to this code
+	var bar string = "["                                // start the bar with a bracket
+	var filled float64 = done / total * float64(length) // calculate the units of the bar that should be filled
+	if done >= 0.995*total {
+		filled = float64(length)
+	}
+	var percentDone int = int(filled)          // convert the filled units to an int
+	var percentLeft int = length - percentDone // calculate the units of the bar that should be empty
+	for i := 0; i < percentDone; i++ {         // fill the bar
+		bar += "\033[92m─"
+	}
+	if done == total {
+		bar += "─\033[0m" // if the bar is full, doesn't use a leading character
+	} else {
+		bar += ">\033[90m" // leading character when filling the bar
+	}
+	for i := 0; i < (percentLeft); i++ { // fill the rest of the bar
+		bar += "─"
+	}
+	bar += "\033[0m]" // add the closing bracket to the bar
+	return bar        // return the bar
 }
 
 // all following functions should be moved to another file, at least when i figure out how to make it work
