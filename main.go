@@ -523,34 +523,40 @@ func main() {
 	}
 
 	// print the progress bar, completely unfilled
-	fmt.Println(utils.ProgressBar(0.0, realOutputDuration, progbarLength))
+	fmt.Println("\033[s" + utils.ProgressBar(0.0, realOutputDuration, progbarLength))
 
 	// start the progress bar updater until the video is done encoding
 	scanner := bufio.NewScanner(stderr)
 	scanner.Split(bufio.ScanRunes)
 	for scanner.Scan() {
-		scannerTextAccum += scanner.Text() // accumulate the text from the scanner
+		// accumulate the text from the scanner
+		scannerTextAccum += scanner.Text()
 
 		// if the scanner text is a newline or carriage return, process the accumulated text
 		if scanner.Text() == "\r" || scanner.Text() == "\n" {
-
 			// if the accumulated text contains the time, process it and print the progress bar and % completion
 			if strings.Contains(scannerTextAccum, "time=") {
+				// time variables
 				fullTime = strings.Split(strings.Split(scannerTextAccum, "\n")[0], "=")[1]
 				hour, _ := strconv.Atoi(strings.Split(fullTime, ":")[0])
 				min, _ := strconv.Atoi(strings.Split(fullTime, ":")[1])
 				sec, _ := strconv.Atoi(strings.Split(strings.Split(fullTime, ":")[2], ".")[0])
 				milisec, _ := strconv.ParseFloat("."+strings.Split(fullTime, ".")[1], 64)
 				fullTime = strings.Split(fullTime, ".")[0] + strconv.FormatFloat(milisec, 'f', 1, 64)[1:] + "s"
+
+				// calculate estimated time remaining
 				eta = time.Since(startTime).Seconds() * (realOutputDuration - currentTotalTime) / currentTotalTime
-				if unspecifiedProgbarSize { // if the progress bar length is not set, set it to the length of the longest possible progress bar
+
+				// if the progress bar length is not set, set it to the length of the longest possible progress bar
+				if unspecifiedProgbarSize {
 					progbarLength = utils.ProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " time: " + utils.TrimTime(fullTime) + " ETA: " + utils.TrimTime(utils.FormatTime(eta)) + " fps: " + avgFramerate + " fp1s: " + lastSecAvgFramerate))
 				}
 				currentTotalTime = float64(hour*3600+min*60+sec) + milisec
 
 				// if the progress bar length is greater than 0, print the progress bar
 				if progbarLength > 0 {
-					fmt.Print("\033[1A\033[0J", utils.ProgressBar(currentTotalTime, realOutputDuration, progbarLength))
+					fmt.Print("\033[u", utils.ProgressBar(currentTotalTime, realOutputDuration, progbarLength))
+					// fmt.Print("\033[1A\033[0J", utils.ProgressBar(currentTotalTime, realOutputDuration, progbarLength))
 				} else {
 					fmt.Print("\033[1A\033[0J")
 				}
@@ -577,10 +583,13 @@ func main() {
 				fmt.Print(" time: ", utils.TrimTime(fullTime))
 				fmt.Print(" ETA: ", utils.TrimTime(utils.FormatTime(eta)))
 				fmt.Print(" fps: ", avgFramerate)
+				fmt.Print("\033[0J") // this overwrites any previous text that was printed, even if unlikely
 				fmt.Print(" fp1s: ", lastSecAvgFramerate)
 				fmt.Print("\n")
 			}
-			scannerTextAccum = "" // reset my concerns
+
+			// reset the accumulated text
+			scannerTextAccum = ""
 		}
 	}
 
@@ -588,7 +597,7 @@ func main() {
 
 	// if the progress bar length is greater than 0, print the progress bar one last time at 100%
 	if progbarLength > 0 {
-		fmt.Print("\033[1A\033[0J", utils.ProgressBar(realOutputDuration, realOutputDuration, progbarLength))
+		fmt.Print("\033[u\033[0J", utils.ProgressBar(realOutputDuration, realOutputDuration, progbarLength))
 	} else {
 		fmt.Print("\033[1A\033[0J")
 	}
