@@ -543,7 +543,7 @@ func main() {
 				milisec, _ := strconv.ParseFloat("."+strings.Split(fullTime, ".")[1], 64)
 				fullTime = strings.Split(fullTime, ".")[0] + strconv.FormatFloat(milisec, 'f', 1, 64)[1:] + "s"
 				eta = time.Since(startTime).Seconds() * (realOutputDuration - currentTotalTime) / currentTotalTime
-				if !unspecifiedProgbarSize { // if the progress bar length is not set, set it to the length of the longest possible progress bar
+				if unspecifiedProgbarSize { // if the progress bar length is not set, set it to the length of the longest possible progress bar
 					progbarLength = utils.ProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " time: " + utils.TrimTime(fullTime) + " ETA: " + utils.TrimTime(utils.FormatTime(eta)) + " fps: " + avgFramerate + " fp1s: " + lastSecAvgFramerate))
 				}
 				currentTotalTime = float64(hour*3600+min*60+sec) + milisec
