@@ -20,7 +20,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -32,9 +31,11 @@ import (
 	"strings"
 	"time"
 
+	"qm-go/ffprobe"
+	"qm-go/utils"
+
 	"github.com/flopp/go-findfont"
 	"github.com/spf13/pflag"
-	"golang.org/x/term"
 )
 
 var (
@@ -68,10 +69,10 @@ var (
 	fontSize                  float64
 
 	// other variables
-	audioBitrate  int
-	corruptFilter string
-	progbarSet    bool
-	bitrate       int
+	audioBitrate           int
+	corruptFilter          string
+	unspecifiedProgbarSize bool
+	bitrate                int
 )
 
 func init() {
@@ -115,6 +116,7 @@ func init() {
 	pflag.Float64Var(&fontSize, "font-size", 12, "Font size (scales with output width")
 	pflag.Parse()
 
+	// check for invalid arguments
 	if input == "" {
 		log.Fatal("No input was specified")
 	}
@@ -134,6 +136,7 @@ func init() {
 		log.Fatal("Cannot specify both duration and end time")
 	}
 
+	// check if input file exists
 	_, err := os.Stat(input)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -145,6 +148,7 @@ func init() {
 }
 
 func main() {
+	// throw out all flags if debug is enabled
 	if debug {
 		log.Print("throwing all flags out")
 		log.Print(
@@ -185,9 +189,8 @@ func main() {
 		)
 	}
 
-	// get needed information from input video
-
-	inputDuration, err := getDuration(input)
+	// get input duration
+	inputDuration, err := ffprobe.Duration(input)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -198,7 +201,8 @@ func main() {
 		log.Fatal("Start time cannot be greater than or equal to input duration")
 	}
 
-	inputFPS, err := getFramerate(input)
+	// get input fps
+	inputFPS, err := ffprobe.Framerate(input)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -206,7 +210,8 @@ func main() {
 		log.Print("fps is ", inputFPS)
 	}
 
-	inputWidth, inputHeight, err := getResolution(input)
+	// get input resolution
+	inputWidth, inputHeight, err := ffprobe.Resolution(input)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -214,9 +219,7 @@ func main() {
 		log.Print("resolution is ", inputWidth, " by ", inputHeight)
 	}
 
-	// set up the args for the output
-
-	// fps and tmix
+	// fps and tmix (frame resampling) filters/calculations
 	if outFPS == -1 {
 		outFPS = 24 - (3 * preset)
 	}
@@ -269,6 +272,7 @@ func main() {
 		bitrate = outputHeight * outputWidth * int(math.Sqrt(float64(outFPS))) / preset
 	}
 
+	// calculate the audio bitrate
 	if audioBrDiv != -1 {
 		audioBitrate = 80000 / audioBrDiv
 	} else {
@@ -284,7 +288,6 @@ func main() {
 
 	// if NOT using --no-video, set add the specified video filters to filter
 	if !(noVideo) {
-
 		if speed != 1 {
 			filter.WriteString("setpts=(1/" + strconv.FormatFloat(speed, 'f', -1, 64) + ")*PTS,")
 			if debug {
@@ -366,6 +369,7 @@ func main() {
 		log.Print("no video, ignoring all video filters")
 	}
 
+	// find what the duration of the output should be for the progress bar, % completion, and ETA in stats
 	var realOutputDuration float64
 	if outDuration >= inputDuration || outDuration == -1 {
 		realOutputDuration = (inputDuration - start) / speed // if the output duration is longer than the input duration, set the output duration to the input duration times speed
@@ -373,7 +377,7 @@ func main() {
 		realOutputDuration = outDuration / speed // if the output duration is shorter than the input duration, set the output duration to the output duration times speed
 	}
 
-	// if NOT using --no-audio, set add the specified audio filters to filter
+	// if not using --no-audio, set add the specified audio filters to filter
 	if !(noAudio) {
 		if volume != 0 {
 			filter.WriteString(";volume=" + strconv.Itoa(volume))
@@ -382,13 +386,14 @@ func main() {
 			}
 		}
 
+		// is speed is not 1, set the audio speed to the specified speed
 		if speed != 1 {
-			// use audio from second input if replacing audio
 			if replaceAudio != "" {
-				filter.WriteString(";[1]atempo=" + strconv.FormatFloat(speed, 'f', -1, 64))
+				filter.WriteString(";[1]atempo=" + strconv.FormatFloat(speed, 'f', -1, 64)) // if the audio is being replaced, use audio from second input
 			} else {
-				filter.WriteString(";[0]atempo=" + strconv.FormatFloat(speed, 'f', -1, 64))
+				filter.WriteString(";[0]atempo=" + strconv.FormatFloat(speed, 'f', -1, 64)) // first input (video)
 			}
+
 			if debug {
 				log.Print("audio speed is ", speed)
 			}
@@ -399,8 +404,10 @@ func main() {
 
 	// corruption calculations based on width and height
 	if corrupt != 0 {
+		// amount of corruption is based on the bitrate of the video, the amount of corruption, and the size of the video
 		corruptAmount = int(float64(outputHeight*outputWidth) / float64(bitrate) * 100000.0 / float64(corrupt*3))
 		corruptFilter = "noise=" + strconv.Itoa(corruptAmount)
+
 		if debug {
 			log.Print("corrupt amount is", corruptAmount)
 			log.Print("(", outputHeight, " * ", outputWidth, ")", " / 2073600 * 1000000", " / ", "(", corrupt, "* 10)")
@@ -408,39 +415,47 @@ func main() {
 		}
 	}
 
-	// ffmpeg args
+	// staring ffmpeg args
 	args := []string{
 		"-y", // forces overwrite of existing file, if one does exist
+		"-loglevel", loglevel,
+		"-hide_banner",
+		"-progress", "-",
+		"-stats_period", strconv.FormatFloat(updateSpeed, 'f', -1, 64),
 	}
+
 	if start != 0 {
 		args = append(args, "-ss", strconv.FormatFloat(start, 'f', -1, 64)) // -ss is the start time
 	}
+
 	if end != -1 {
 		outDuration = end - start
 	}
+
 	if outDuration != -1 {
 		args = append(args, "-t", strconv.FormatFloat(outDuration, 'f', -1, 64)) // -t sets the duration
 	}
-	if noVideo {
-		args = append(args, "-vn") // removes video
+
+	if noVideo { // remove video if noVideo is true
+		args = append(args, "-vn")
 		if debug {
 			log.Print("no video")
 		}
 	}
+
+	// remove audio if noAudio is true
 	if noAudio {
 		args = append(args, "-an") // removes audio
 		if debug {
 			log.Print("no audio")
 		}
 	}
+
 	args = append(args,
-		// "-stats_period", "0.1",
-		"-loglevel", loglevel,
-		"-hide_banner",
-		"-progress", "-",
-		"-stats_period", strconv.FormatFloat(updateSpeed, 'f', -1, 64),
 		"-i", input,
 	)
+
+	// if replaceAudio is specified, add the second input to the ffmpeg args to replace the audio of the output
 	if replaceAudio != "" {
 		args = append(args, "-i", replaceAudio)
 		args = append(args, "-map", "0:v:0")
@@ -449,6 +464,8 @@ func main() {
 			log.Print("replacing audio")
 		}
 	}
+
+	// more always-used args
 	args = append(args,
 		"-preset", "ultrafast",
 		"-shortest",
@@ -457,51 +474,68 @@ func main() {
 		"-c:a", "aac",
 		"-b:a", strconv.Itoa(int(audioBitrate)),
 	)
-	if len(filter.String()) != 0 { // if filter is not empty, add the flag for setting the complex filter to the ffmpeg args
+
+	// if any filters are being used, add them
+	if len(filter.String()) != 0 {
 		args = append(args, "-filter_complex", filter.String())
 	}
-	if corrupt != 0 { // if corrupt isn't default, add the corrupt filter to the ffmpeg args
+
+	// if corruption is specified, add the corrupt filter to the ffmpeg args
+	if corrupt != 0 {
 		args = append(args, "-bsf", corruptFilter)
 	}
-	args = append(args, output)
+
+	args = append(args, output) // add the output file to the ffmpeg args
 
 	if debug {
 		log.Print(args)
 	}
 
-	fmt.Println("Encoding file\033[96m", input, "\033[0mto\033[96m", output, "\033[0m")
-	if progbarLength == -1 {
-		progbarSet = false
-	} else {
-		progbarSet = true
-	}
-	// encode
-	cmd := exec.Command("ffmpeg", args...)
+	fmt.Println("Encoding file\033[96m", input, "\033[0mto\033[96m", output, "\033[0m") // print the input and output file
 
+	// if the progress bar length is -1 (default) then we can set it automatically later
+	if progbarLength == -1 {
+		unspecifiedProgbarSize = true
+	} else {
+		unspecifiedProgbarSize = false
+	}
+
+	// start ffmpeg for encoding
+	cmd := exec.Command("ffmpeg", args...)
 	stderr, _ := cmd.StdoutPipe()
 	cmd.Start()
 
-	// progress bar and stats
+	// variables for progress bar and stats
 	scannerTextAccum := " "
 	eta := 0.0
 	currentFrame := 0
-	fullTime := ""
-	oldFrame := 0
-	avgFramerate := " "
-	lastSecAvgFramerate := " "
-	startTime := time.Now()
-	changeStartTime := time.Now()
+	fullTime := ""                // time as a string
+	oldFrame := 0                 // the frame number from the last time that the average fps over the last second was calculated
+	avgFramerate := " "           // the average framerate over the entire video
+	lastSecAvgFramerate := " "    // the average framerate over the last second
+	startTime := time.Now()       // the time that the video started encoding
+	changeStartTime := time.Now() // the time that the last change in the one second framerate was made
 	var currentTotalTime float64
-	if !progbarSet { // if the progress bar length is not set, set it to the length of the longest possible progress bar
-		progbarLength = getProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " time: " + trimTime(fullTime) + " ETA: " + trimTime(formatTime(eta)) + " fps: " + avgFramerate + " fp1s: " + lastSecAvgFramerate))
+
+	// if the progress bar length is not set, set it to the length of the longest possible progress bar
+	if unspecifiedProgbarSize {
+		progbarLength = utils.ProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " time: " + utils.TrimTime(fullTime) + " ETA: " + utils.TrimTime(utils.FormatTime(eta)) + " fps: " + avgFramerate + " fp1s: " + lastSecAvgFramerate))
 	}
-	fmt.Println(progressBar(0.0, realOutputDuration, progbarLength))
+
+	// print the progress bar, completely unfilled
+	fmt.Println(utils.ProgressBar(0.0, realOutputDuration, progbarLength))
+
+	// start the progress bar updater until the video is done encoding
 	scanner := bufio.NewScanner(stderr)
 	scanner.Split(bufio.ScanRunes)
 	for scanner.Scan() {
-		scannerTextAccum += scanner.Text()                    // accumulate the text from the scanner
-		if scanner.Text() == "\r" || scanner.Text() == "\n" { // if the scanner text is a newline or carriage return, process the accumulated text
-			if strings.Contains(scannerTextAccum, "time=") { // if the accumulated text contains the time, process it
+		scannerTextAccum += scanner.Text() // accumulate the text from the scanner
+
+		// if the scanner text is a newline or carriage return, process the accumulated text
+		if scanner.Text() == "\r" || scanner.Text() == "\n" {
+
+			// if the accumulated text contains the time, process it and print the progress bar and % completion
+			if strings.Contains(scannerTextAccum, "time=") {
 				fullTime = strings.Split(strings.Split(scannerTextAccum, "\n")[0], "=")[1]
 				hour, _ := strconv.Atoi(strings.Split(fullTime, ":")[0])
 				min, _ := strconv.Atoi(strings.Split(fullTime, ":")[1])
@@ -509,29 +543,39 @@ func main() {
 				milisec, _ := strconv.ParseFloat("."+strings.Split(fullTime, ".")[1], 64)
 				fullTime = strings.Split(fullTime, ".")[0] + strconv.FormatFloat(milisec, 'f', 1, 64)[1:] + "s"
 				eta = time.Since(startTime).Seconds() * (realOutputDuration - currentTotalTime) / currentTotalTime
-				if !progbarSet { // if the progress bar length is not set, set it to the length of the longest possible progress bar
-					progbarLength = getProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " time: " + trimTime(fullTime) + " ETA: " + trimTime(formatTime(eta)) + " fps: " + avgFramerate + " fp1s: " + lastSecAvgFramerate))
+				if !unspecifiedProgbarSize { // if the progress bar length is not set, set it to the length of the longest possible progress bar
+					progbarLength = utils.ProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " time: " + utils.TrimTime(fullTime) + " ETA: " + utils.TrimTime(utils.FormatTime(eta)) + " fps: " + avgFramerate + " fp1s: " + lastSecAvgFramerate))
 				}
 				currentTotalTime = float64(hour*3600+min*60+sec) + milisec
-				if progbarLength > 0 { // if the progress bar length is greater than 0, print the progress bar
-					fmt.Print("\033[1A\033[0J", progressBar(currentTotalTime, realOutputDuration, progbarLength))
+
+				// if the progress bar length is greater than 0, print the progress bar
+				if progbarLength > 0 {
+					fmt.Print("\033[1A\033[0J", utils.ProgressBar(currentTotalTime, realOutputDuration, progbarLength))
 				} else {
 					fmt.Print("\033[1A\033[0J")
 				}
+
+				// print the percentage complete
 				fmt.Print(" ", strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64), "%")
 			}
-			if strings.Contains(scannerTextAccum, "frame=") { // if the accumulated text contains the frame, process it
+
+			// if the accumulated text contains the frame, process it
+			if strings.Contains(scannerTextAccum, "frame=") {
 				currentFrame, _ = strconv.Atoi(strings.Split(strings.Split(scannerTextAccum, "\n")[0], "=")[1])
 				avgFramerate = strconv.FormatFloat(float64(currentFrame)/time.Since(startTime).Seconds(), 'f', 1, 64)
+
+				// if it's been one second since the last fps over one second update, update it again
 				if time.Since(changeStartTime).Seconds() >= 1 {
 					lastSecAvgFramerate = strconv.FormatFloat(float64(currentFrame-oldFrame)/time.Since(changeStartTime).Seconds(), 'f', 1, 64)
 					oldFrame = currentFrame
 					changeStartTime = time.Now()
 				}
 			}
-			if strings.Contains(scannerTextAccum, "speed=") { // if the accumulated text contains the frame, process it
-				fmt.Print(" time: ", trimTime(fullTime))
-				fmt.Print(" ETA: ", trimTime(formatTime(eta)))
+
+			// if the accumulated text contains the speed, print the time, eta, fps, and fps over the last second
+			if strings.Contains(scannerTextAccum, "speed=") {
+				fmt.Print(" time: ", utils.TrimTime(fullTime))
+				fmt.Print(" ETA: ", utils.TrimTime(utils.FormatTime(eta)))
 				fmt.Print(" fps: ", avgFramerate)
 				fmt.Print(" fp1s: ", lastSecAvgFramerate)
 				fmt.Print("\n")
@@ -539,182 +583,25 @@ func main() {
 			scannerTextAccum = "" // reset my concerns
 		}
 	}
+
 	cmd.Wait()
-	if progbarLength > 0 { // if the progress bar length is greater than 0, print the progress bar
-		fmt.Print("\033[1A\033[0J", progressBar(realOutputDuration, realOutputDuration, progbarLength))
+
+	// if the progress bar length is greater than 0, print the progress bar one last time at 100%
+	if progbarLength > 0 {
+		fmt.Print("\033[1A\033[0J", utils.ProgressBar(realOutputDuration, realOutputDuration, progbarLength))
 	} else {
 		fmt.Print("\033[1A\033[0J")
 	}
+
+	// print the percentage complete (100% by now), time, ETA (hopfully 0s), fps, and fps over the last second
 	fmt.Print(
 		" 100.0%",
-		" time: ", trimTime(fullTime),
-		" ETA: ", trimTime(formatTime(eta)),
+		" time: ", utils.TrimTime(fullTime),
+		" ETA: ", utils.TrimTime(utils.FormatTime(eta)),
 		" fps: ", avgFramerate,
 		" fp1s: ", lastSecAvgFramerate,
 		"\n",
 	)
-}
 
-func trimTime(time string) string {
-	firstchar := strings.Split(time, ":")[0]
-	if firstchar == "00" {
-		time = strings.Split(time, ":")[1] + ":" + strings.Split(time, ":")[2]
-		firstchar = strings.Split(time, ":")[0]
-		if firstchar == "00" {
-			time = strings.Split(time, ":")[1]
-			firstchar = time[0:1]
-			if firstchar == "0" {
-				time = time[1:]
-			}
-		}
-	}
-	return time
-}
-
-func formatTime(time float64) string {
-	hour := strconv.Itoa(int(time / 3600))
-	minute := strconv.Itoa(int(math.Mod(time, 3600) / 60))
-	second := strconv.FormatFloat(math.Mod(time, 60), 'f', 1, 64)
-	if len(minute) == 1 {
-		minute = "0" + minute
-	}
-	if len(hour) == 1 {
-		hour = "0" + hour
-	}
-	if len(strings.Split(second, ".")[0]) == 1 {
-		second = "0" + second
-	}
-	return hour + ":" + minute + ":" + second + "s"
-}
-
-func getProgbarSize(length int) int {
-	terminalWidth, _, _ := term.GetSize(int(os.Stdout.Fd()))
-	return terminalWidth - 7 - length
-}
-
-func progressBar(done float64, total float64, length int) string {
-	// add comments to this code
-	var bar string = "["                                // start the bar with a bracket
-	var filled float64 = done / total * float64(length) // calculate the units of the bar that should be filled
-	if done >= 0.995*total {
-		filled = float64(length)
-	}
-	var percentDone int = int(filled)          // convert the filled units to an int
-	var percentLeft int = length - percentDone // calculate the units of the bar that should be empty
-	for i := 0; i < percentDone; i++ {         // fill the bar
-		bar += "\033[92m─"
-	}
-	if done == total {
-		bar += "─\033[0m" // if the bar is full, doesn't use a leading character
-	} else {
-		bar += ">\033[90m" // leading character when filling the bar
-	}
-	for i := 0; i < (percentLeft); i++ { // fill the rest of the bar
-		bar += "─"
-	}
-	bar += "\033[0m]" // add the closing bracket to the bar
-	return bar        // return the bar
-}
-
-// all following functions should be moved to another file, at least when i figure out how to make it work
-func getDuration(input string) (float64, error) {
-	args := []string{
-		"-i", input,
-		"-show_entries", "format=duration",
-		"-of", "csv=p=0",
-	}
-
-	cmd := exec.Command("ffprobe", args...)
-
-	out, err := cmd.Output()
-	if err != nil {
-		return 0, err
-	}
-
-	outs := string(out)
-	outs = strings.TrimSuffix(outs, "\n") // removing the newline at the end of the output
-	outs = strings.TrimSuffix(outs, "\r") // windows includes a carriage return, so we remove that too
-	outs = strings.TrimSuffix(outs, "\n") // just in case there's a newline after the carriage return, because why not
-
-	outf, err := strconv.ParseFloat(outs, 64)
-	if err != nil {
-		return 0, nil
-	}
-
-	return outf, nil
-}
-
-func getFramerate(input string) (float64, error) {
-	args := []string{
-		"-i", input,
-		"-show_entries", "stream=r_frame_rate",
-		"-select_streams", "v:0",
-		"-of", "csv=p=0",
-	}
-
-	cmd := exec.Command("ffprobe", args...)
-
-	out, err := cmd.Output()
-	if err != nil {
-		return 0, err
-	}
-
-	outs := string(out)
-	outs = strings.TrimSuffix(outs, "\n") // removing the newline at the end of the output
-	outs = strings.TrimSuffix(outs, "\r") // windows includes a carriage return, so we remove that too
-	outs = strings.TrimSuffix(outs, "\n") // just in case there's a newline after the carriage return, because why not
-	outl := strings.Split(outs, "/")
-
-	if len(outl) != 2 {
-		return 0, errors.New("parsed list is not of length 2")
-	}
-
-	numerator, err := strconv.Atoi(outl[0])
-	if err != nil {
-		return 0, err
-	}
-	denominator, err := strconv.Atoi(outl[1])
-	if err != nil {
-		return 0, err
-	}
-
-	return float64(numerator) / float64(denominator), nil
-}
-
-func getResolution(input string) (int, int, error) {
-	args := []string{
-		"-i", input,
-		"-select_streams", "v:0",
-		"-show_entries", "stream=width,height",
-		"-of", "csv=p=0",
-	}
-
-	cmd := exec.Command("ffprobe", args...)
-
-	out, err := cmd.Output()
-	if err != nil {
-		return 0, 0, err
-	}
-
-	outs := string(out)
-
-	outs = strings.TrimSuffix(outs, "\n") // removing the newline at the end of the output
-	outs = strings.TrimSuffix(outs, "\r") // windows includes a carriage return, so we remove that too
-	outs = strings.TrimSuffix(outs, "\n") // just in case there's a newline after the carriage return, because why not
-	outl := strings.Split(outs, ",")
-
-	if len(outl) != 2 {
-		return 0, 0, errors.New("parsed list is not of length 2")
-	}
-
-	width, err := strconv.Atoi(outl[0])
-	if err != nil {
-		return 0, 0, err
-	}
-	height, err := strconv.Atoi(outl[1])
-	if err != nil {
-		return 0, 0, err
-	}
-
-	return width, height, nil
+	fmt.Println("\033[92mDone!\033[0m")
 }
