@@ -7,7 +7,9 @@ Below are the flags. The only needed flag is the input, as all of the others hav
   -i, --input string           Specify the input file
   -o, --output string          Specify the output file
   -d, --debug                  Print out debug information
+      --progress-bar int       Length of progress bar, defaults based on terminal width (default -1)
       --loglevel string        Specify the log level for ffmpeg (default "error")
+      --update-speed float     Specify the speed at which stats will be updated (default 0.0167)
       --no-video               Produces an output with no video
       --no-audio               Produces an output with no audio
       --replace-audio string   Replace the audio with the specified file

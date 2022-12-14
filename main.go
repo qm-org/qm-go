@@ -145,13 +145,27 @@ func init() {
 			log.Fatal(err)
 		}
 	}
+
+	// check if output file exists
+	_, outExistErr := os.Stat(output)
+	if outExistErr == nil {
+		if debug {
+			log.Print("output file already exists")
+		}
+		var confirm string
+		fmt.Println("\033[91mWARNING: The output file \033[96m", output, "\033[91malready exists! Overwrite? [Y/N]\033[0m")
+		fmt.Scanln(&confirm)
+		if confirm != "Y" && confirm != "y" {
+			log.Fatal("Aborted by user - output file already exists")
+		}
+	}
 }
 
 func main() {
 	// throw out all flags if debug is enabled
 	if debug {
 		log.Print("throwing all flags out")
-		log.Print(
+		log.Println(
 			input,
 			output,
 			debug,
@@ -521,9 +535,12 @@ func main() {
 	if unspecifiedProgbarSize {
 		progbarLength = utils.ProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " time: " + utils.TrimTime(fullTime) + " ETA: " + utils.TrimTime(utils.FormatTime(eta)) + " fps: " + avgFramerate + " fp1s: " + lastSecAvgFramerate))
 	}
+	if debug {
+		log.Print("progbarLength is", progbarLength)
+	}
 
 	// print the progress bar, completely unfilled
-	fmt.Println("\033[s" + utils.ProgressBar(0.0, realOutputDuration, progbarLength))
+	fmt.Println(utils.ProgressBar(0.0, realOutputDuration, progbarLength))
 
 	// start the progress bar updater until the video is done encoding
 	scanner := bufio.NewScanner(stderr)
@@ -555,8 +572,7 @@ func main() {
 
 				// if the progress bar length is greater than 0, print the progress bar
 				if progbarLength > 0 {
-					fmt.Print("\033[u", utils.ProgressBar(currentTotalTime, realOutputDuration, progbarLength))
-					// fmt.Print("\033[1A\033[0J", utils.ProgressBar(currentTotalTime, realOutputDuration, progbarLength))
+					fmt.Print("\033[1A", utils.ProgressBar(currentTotalTime, realOutputDuration, progbarLength))
 				} else {
 					fmt.Print("\033[1A\033[0J")
 				}
@@ -597,7 +613,7 @@ func main() {
 
 	// if the progress bar length is greater than 0, print the progress bar one last time at 100%
 	if progbarLength > 0 {
-		fmt.Print("\033[u\033[0J", utils.ProgressBar(realOutputDuration, realOutputDuration, progbarLength))
+		fmt.Print("\033[1A\033[0J", utils.ProgressBar(realOutputDuration, realOutputDuration, progbarLength))
 	} else {
 		fmt.Print("\033[1A\033[0J")
 	}
@@ -612,5 +628,15 @@ func main() {
 		"\n",
 	)
 
-	fmt.Println("\033[92mDone!\033[0m")
+	// check if output file exists
+	_, outErr := os.Stat(output)
+	if outErr != nil {
+		if os.IsNotExist(outErr) {
+			log.Fatal("\033[91mError: something went wrong when making the output file!\033[0m")
+		} else {
+			log.Fatal(err)
+		}
+	} else {
+		fmt.Println("\033[92mEncoding finished in", utils.TrimTime(utils.FormatTime(time.Since(startTime).Seconds())), "\033[0m")
+	}
 }
