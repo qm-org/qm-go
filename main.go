@@ -141,14 +141,12 @@ func init() {
 
 func main() {
 	for i, input := range inputs {
+		// set the progressbar length to 0 if it isn't explicitly set, preventing it from spilling over to the next line when called for the first time
 		if unspecifiedProgbarSize {
 			progbarLength = 0
 		}
 
-		if debug {
-			log.Println("Input number:", i, ":", input)
-		}
-
+		// set the output file name if it isn't explicitly set or if there are multiple inputs
 		if len(inputs) > 1 {
 			output = strings.TrimSuffix(input, filepath.Ext(input)) + " (Quality Munched)" + ".mp4"
 		}
