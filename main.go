@@ -68,6 +68,7 @@ var (
 	text, textFont, textColor string
 	textposx, textposy        int
 	fontSize                  float64
+	formattingCodes           bool
 
 	// other variables
 	audioBitrate           int
@@ -115,7 +116,54 @@ func init() {
 	pflag.IntVar(&textposx, "text-pos-x", 50, "horizontal position of text, 0 is far left, 100 is far right")
 	pflag.IntVar(&textposy, "text-pos-y", 90, "vertical position of text, 0 is top, 100 is bottom")
 	pflag.Float64Var(&fontSize, "font-size", 12, "Font size (scales with output width")
+	pflag.BoolVar(&formattingCodes, "formatting-codes", false, "Print out ANSI escape/formatting codes")
 	pflag.Parse()
+
+	// formatting codes, if enabled, will print out ANSI escape codes
+	if formattingCodes {
+		fmt.Println("\033[0m0 Quality Muncher\033[0m")
+		fmt.Println("\033[1m1 Quality Muncher\033[0m")
+		fmt.Println("\033[2m2 Quality Muncher\033[0m")
+		fmt.Println("\033[3m3 Quality Muncher\033[0m")
+		fmt.Println("\033[4m4 Quality Muncher\033[0m")
+		fmt.Println("\033[5m5 Quality Muncher\033[0m")
+		fmt.Println("\033[6m6 Quality Muncher\033[0m")
+		fmt.Println("\033[7m7 Quality Muncher\033[0m")
+		fmt.Println("\033[8m8 Quality Muncher\033[0m")
+		fmt.Println("\033[9m9 Quality Muncher\033[0m")
+		fmt.Println("\033[30m30 Quality Muncher\033[0m")
+		fmt.Println("\033[31m31 Quality Muncher\033[0m")
+		fmt.Println("\033[32m32 Quality Muncher\033[0m")
+		fmt.Println("\033[33m33 Quality Muncher\033[0m")
+		fmt.Println("\033[34m34 Quality Muncher\033[0m")
+		fmt.Println("\033[35m35 Quality Muncher\033[0m")
+		fmt.Println("\033[36m36 Quality Muncher\033[0m")
+		fmt.Println("\033[37m37 Quality Muncher\033[0m")
+		fmt.Println("\033[40m40 Quality Muncher\033[0m")
+		fmt.Println("\033[41m41 Quality Muncher\033[0m")
+		fmt.Println("\033[42m42 Quality Muncher\033[0m")
+		fmt.Println("\033[43m43 Quality Muncher\033[0m")
+		fmt.Println("\033[44m44 Quality Muncher\033[0m")
+		fmt.Println("\033[45m45 Quality Muncher\033[0m")
+		fmt.Println("\033[46m46 Quality Muncher\033[0m")
+		fmt.Println("\033[47m47 Quality Muncher\033[0m")
+		fmt.Println("\033[90m90 Quality Muncher\033[0m")
+		fmt.Println("\033[91m91 Quality Muncher\033[0m")
+		fmt.Println("\033[92m92 Quality Muncher\033[0m")
+		fmt.Println("\033[93m93 Quality Muncher\033[0m")
+		fmt.Println("\033[94m94 Quality Muncher\033[0m")
+		fmt.Println("\033[95m95 Quality Muncher\033[0m")
+		fmt.Println("\033[96m96 Quality Muncher\033[0m")
+		fmt.Println("\033[97m97 Quality Muncher\033[0m")
+		fmt.Println("\033[100m100 Quality Muncher\033[0m")
+		fmt.Println("\033[101m101 Quality Muncher\033[0m")
+		fmt.Println("\033[102m102 Quality Muncher\033[0m")
+		fmt.Println("\033[103m103 Quality Muncher\033[0m")
+		fmt.Println("\033[104m104 Quality Muncher\033[0m")
+		fmt.Println("\033[105m105 Quality Muncher\033[0m")
+		fmt.Println("\033[106m106 Quality Muncher\033[0m")
+		fmt.Println("\033[107m107 Quality Muncher\033[0m")
+	}
 
 	// check for invalid arguments
 	if inputs[0] == "" {
@@ -146,6 +194,11 @@ func main() {
 			progbarLength = 0
 		}
 
+		if debug {
+			log.Println("input: " + input)
+			log.Println("input #: " + strconv.Itoa(i))
+		}
+
 		// set the output file name if it isn't explicitly set or if there are multiple inputs
 		if len(inputs) > 1 {
 			output = strings.TrimSuffix(input, filepath.Ext(input)) + " (Quality Munched)" + ".mp4"
@@ -164,7 +217,7 @@ func main() {
 				log.Print("output file already exists")
 			}
 			var confirm string
-			fmt.Println("\033[91mWARNING: The output file \033[96m", output, "\033[91malready exists! Overwrite? [Y/N]\033[0m")
+			fmt.Println("\033[4m\033[31mWarning\033[24m: The output file\033[91m", output, "\033[31malready exists! Overwrite? [Y/N]\033[0m")
 			fmt.Scanln(&confirm)
 			if confirm != "Y" && confirm != "y" {
 				log.Fatal("Aborted by user - output file already exists")
@@ -175,9 +228,9 @@ func main() {
 		_, err := os.Stat(input)
 		if err != nil {
 			if os.IsNotExist(err) {
-				log.Fatal("Input file " + input + " does not exist")
+				log.Fatal("\033[4m\033[31mFatal Error\033[24m: input file " + input + " does not exist\033[0m")
 			} else {
-				fmt.Println("\033[91mWarning: Input file " + input + " might not exist\033[0m")
+				fmt.Println("\033[4m\033[38;2;254;165;0mWarning\033[24m: Input file " + input + " might not exist\033[0m")
 			}
 		}
 
@@ -373,9 +426,7 @@ func main() {
 				}
 				err = ioutil.WriteFile("temp/font.ttf", input, 0644)
 				if err != nil {
-					log.Print("Error creating", "temp/font.ttf")
-					log.Print(err)
-					return
+					log.Fatal("\033[4m\033[31mFatal Error\033[24m: unable to create temp/font.ttf")
 				}
 				log.Print(fontPath)
 				filter.WriteString(",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + "/12):fontsize=" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
@@ -525,7 +576,7 @@ func main() {
 			log.Print(args)
 		}
 
-		fmt.Println("Encoding file\033[96m", input, "\033[0mto\033[96m", output, "\033[0m") // print the input and output file
+		fmt.Println("\033[94mEncoding file\033[36m", input, "\033[94mto\033[36m", output, "\033[0m") // print the input and output file
 
 		// start ffmpeg for encoding
 		cmd := exec.Command("ffmpeg", args...)
@@ -645,12 +696,12 @@ func main() {
 		_, outErr := os.Stat(output)
 		if outErr != nil {
 			if os.IsNotExist(outErr) {
-				log.Fatal("\033[91mError: something went wrong when making the output file!\033[0m")
+				log.Fatal("\033[4m\033[31mFatal Error\033[24m: something went wrong when making the output file!\033[0m")
 			} else {
 				log.Fatal(err)
 			}
 		} else {
-			fmt.Println("\033[92mFinished encoding", output, "in", utils.TrimTime(utils.FormatTime(time.Since(startTime).Seconds())), "\033[0m")
+			fmt.Println("\033[92mFinished encoding\033[32m", output, "\033[92min", utils.TrimTime(utils.FormatTime(time.Since(startTime).Seconds())), "\033[0m")
 		}
 	}
 }
