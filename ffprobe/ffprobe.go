@@ -108,3 +108,29 @@ func Framerate(input string) (float64, error) {
 
 	return float64(numerator) / float64(denominator), nil
 }
+
+func FrameCount(input string) int {
+	args := []string{
+		"-i", input,
+		"-show_entries", "stream=nb_read_packets",
+		"-select_streams", "v:0",
+		"-count_packets",
+		"-of", "csv=p=0",
+	}
+
+	cmd := exec.Command("ffprobe", args...)
+
+	out, err := cmd.Output()
+	if err != nil {
+		return 0
+	}
+
+	outs := string(out)
+	outs = strings.TrimSuffix(outs, "\n") // removing the newline at the end of the output
+	outs = strings.TrimSuffix(outs, "\r") // windows includes a carriage return, so we remove that too
+	outs = strings.TrimSuffix(outs, "\n") // just in case there's a newline after the carriage return, because why not
+
+	outi, err := strconv.Atoi(outs)
+
+	return outi
+}
