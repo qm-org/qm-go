@@ -807,7 +807,7 @@ func imageMunch(input string) {
 		filter.WriteString(",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + "/12):fontsize=" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
 		if debug {
 			log.Print("text is ", text)
-			log.Print(",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + string(outputWidth/len(text)*2) + "/12):fontsize=" + strconv.Itoa(outputWidth/len(text)*2) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
+			log.Print(",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + strconv.Itoa(outputWidth/len(text)*2) + "/12):fontsize=" + strconv.Itoa(outputWidth/len(text)*2) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
 		}
 	}
 
@@ -850,7 +850,6 @@ func imageMunch(input string) {
 			log.Fatal(err)
 		}
 
-		oldOutput = output
 		newOutput = "temp/loop1.jpg"
 		cmd = exec.Command(
 			"ffmpeg",
