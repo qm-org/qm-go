@@ -233,6 +233,16 @@ func main() {
 	}
 
 	for i, input := range inputs {
+		// check if input file exists
+		_, err := os.Stat(input)
+		if err != nil {
+			if os.IsNotExist(err) {
+				log.Fatal("\033[4m\033[31mFatal Error\033[24m: input file " + input + " does not exist\033[0m")
+			} else {
+				fmt.Println("\033[4m\033[38;2;254;165;0mWarning\033[24m: Input file " + input + " might not exist\033[0m")
+			}
+		}
+
 		// set the progressbar length to 0 if it isn't explicitly set, preventing it from spilling over to the next line when called for the first time
 		if unspecifiedProgbarSize {
 			progbarLength = 0
@@ -243,17 +253,13 @@ func main() {
 			log.Println("input #: " + strconv.Itoa(i))
 		}
 
-		// get input duration
-		inputDuration, _ := ffprobe.Duration(input)
-		if debug {
-			log.Print("duration is ", inputDuration)
-		}
+		inputData, _ := ffprobe.ProbeData(input)
 
 		outExt := ".mp4"
 
 		// check if image or video
 		isImage := false
-		if inputDuration < 1 {
+		if inputData.Duration < 1 {
 			if ffprobe.FrameCount(input) == 1 {
 				isImage = true
 				outExt = ".jpg"
@@ -261,7 +267,7 @@ func main() {
 		}
 
 		if !isImage {
-			if start >= inputDuration {
+			if start >= inputData.Duration {
 				log.Fatal("Start time cannot be greater than or equal to input duration")
 			}
 		}
@@ -291,24 +297,14 @@ func main() {
 			}
 		}
 
-		// check if input file exists
-		_, err := os.Stat(input)
-		if err != nil {
-			if os.IsNotExist(err) {
-				log.Fatal("\033[4m\033[31mFatal Error\033[24m: input file " + input + " does not exist\033[0m")
-			} else {
-				fmt.Println("\033[4m\033[38;2;254;165;0mWarning\033[24m: Input file " + input + " might not exist\033[0m")
-			}
-		}
-
 		startTime := time.Now()
 		if isImage {
 			if debug {
 				log.Println("input is an image")
 			}
-			imageMunch(input)
+			imageMunch(input, inputData)
 		} else {
-			videoMunch(input, inputDuration)
+			videoMunch(input, inputData)
 		}
 
 		// check if output file exists
@@ -325,23 +321,10 @@ func main() {
 	}
 }
 
-func videoMunch(input string, inputDuration float64) {
-	// get input fps
-	inputFPS, err := ffprobe.Framerate(input)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if debug {
-		log.Print("fps is ", inputFPS)
-	}
-
+func videoMunch(input string, inputData ffprobe.MediaData) {
 	// get input resolution
-	inputWidth, inputHeight, err := ffprobe.Resolution(input)
-	if err != nil {
-		log.Fatal(err)
-	}
 	if debug {
-		log.Print("resolution is ", inputWidth, " by ", inputHeight)
+		log.Print("resolution is ", inputData.Width, " by ", inputData.Height)
 	}
 
 	// fps and tmix (frame resampling) filters/calculations
@@ -351,8 +334,8 @@ func videoMunch(input string, inputDuration float64) {
 	var fpsFilter string = "fps=" + strconv.Itoa(outFPS)
 	var tmixFrames int = 0
 	if resample {
-		if outFPS <= int(inputFPS) {
-			tmixFrames = int(inputFPS) / outFPS
+		if outFPS <= int(inputData.Framerate) {
+			tmixFrames = int(inputData.Framerate) / outFPS
 			fpsFilter = "tmix=frames=" + strconv.Itoa(tmixFrames) + ":weights=1,fps=" + strconv.Itoa(outFPS)
 			if debug {
 				log.Print("resampling with tmix, tmix frames ", tmixFrames, " and output fps is "+strconv.Itoa(outFPS))
@@ -389,8 +372,8 @@ func videoMunch(input string, inputDuration float64) {
 	}
 
 	// calculate the output resolution and bitrate based on that
-	outputWidth := int(math.Round(float64(inputWidth)*outScale*float64(aspectWidth))/2) * 2
-	outputHeight := int(math.Round(float64(inputHeight)*outScale*float64(aspectHeight))/2) * 2
+	outputWidth := int(math.Round(float64(inputData.Width)*outScale*float64(aspectWidth))/2) * 2
+	outputHeight := int(math.Round(float64(inputData.Height)*outScale*float64(aspectHeight))/2) * 2
 	if videoBrDiv != -1 {
 		bitrate = outputHeight * outputWidth * int(math.Sqrt(float64(outFPS))) / videoBrDiv
 	} else {
@@ -430,9 +413,9 @@ func videoMunch(input string, inputDuration float64) {
 		}
 
 		if fadeout != 0 {
-			filter.WriteString(",fade=t=out:d=" + strconv.FormatFloat(fadeout, 'f', -1, 64) + ":st=" + strconv.FormatFloat((inputDuration-fadeout), 'f', -1, 64))
+			filter.WriteString(",fade=t=out:d=" + strconv.FormatFloat(fadeout, 'f', -1, 64) + ":st=" + strconv.FormatFloat((inputData.Duration-fadeout), 'f', -1, 64))
 			if debug {
-				log.Print("fade out duration is ", fadeout, " start time is ", (inputDuration - fadeout))
+				log.Print("fade out duration is ", fadeout, " start time is ", (inputData.Duration - fadeout))
 			}
 		}
 
@@ -494,8 +477,8 @@ func videoMunch(input string, inputDuration float64) {
 
 	// find what the duration of the output should be for the progress bar, % completion, and ETA in stats
 	var realOutputDuration float64
-	if outDuration >= inputDuration || outDuration == -1 {
-		realOutputDuration = (inputDuration - start) / speed // if the output duration is longer than the input duration, set the output duration to the input duration times speed
+	if outDuration >= inputData.Duration || outDuration == -1 {
+		realOutputDuration = (inputData.Duration - start) / speed // if the output duration is longer than the input duration, set the output duration to the input duration times speed
 	} else {
 		realOutputDuration = outDuration / speed // if the output duration is shorter than the input duration, set the output duration to the output duration times speed
 	}
@@ -732,14 +715,9 @@ func videoMunch(input string, inputDuration float64) {
 	return
 }
 
-func imageMunch(input string) {
-	// get input resolution
-	inputWidth, inputHeight, err := ffprobe.Resolution(input)
-	if err != nil {
-		log.Fatal(err)
-	}
+func imageMunch(input string, inputData ffprobe.MediaData) {
 	if debug {
-		log.Print("resolution is ", inputWidth, " by ", inputHeight)
+		log.Print("resolution is ", inputData.Width, " by ", inputData.Height)
 	}
 
 	if outScale == -1 {
@@ -765,8 +743,8 @@ func imageMunch(input string) {
 	}
 
 	// calculate the output resolution
-	outputWidth := int(math.Round(float64(inputWidth)*outScale*float64(aspectWidth))/2) * 2
-	outputHeight := int(math.Round(float64(inputHeight)*outScale*float64(aspectHeight))/2) * 2
+	outputWidth := int(math.Round(float64(inputData.Width)*outScale*float64(aspectWidth))/2) * 2
+	outputHeight := int(math.Round(float64(inputData.Height)*outScale*float64(aspectHeight))/2) * 2
 
 	// set up the ffmpeg filter for -filter_complex
 	var filter strings.Builder
