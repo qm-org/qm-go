@@ -712,7 +712,6 @@ func videoMunch(input string, inputData ffprobe.MediaData) {
 		" fp1s: ", lastSecAvgFramerate,
 		"\n",
 	)
-	return
 }
 
 func imageMunch(input string, inputData ffprobe.MediaData) {
@@ -845,6 +844,22 @@ func imageMunch(input string, inputData ffprobe.MediaData) {
 		cmd.Start()
 		cmd.Wait()
 
+		// if the progress bar length is not set, set it to the length of the longest possible progress bar
+		if unspecifiedProgbarSize {
+			progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((1*100/float64(loopNum)), 'f', 1, 64) + "%")))
+		}
+
+		// if the progress bar length is greater than 0, print the progress bar
+		fmt.Println()
+		if progbarLength > 0 {
+			fmt.Print("\033[1A", utils.ProgressBar(1, float64(loopNum), progbarLength))
+		} else {
+			fmt.Print("\033[1A\033[0J")
+		}
+
+		// print the percentage complete
+		fmt.Println(" ", strconv.FormatFloat((1*100/float64(loopNum)), 'f', 1, 64)+"%\033[0J")
+
 		if debug {
 			log.Print("libwebp:")
 			log.Print("compression level: " + strconv.Itoa(int(float64(1/float64(preset))*7.0)-1))
@@ -875,6 +890,19 @@ func imageMunch(input string, inputData ffprobe.MediaData) {
 			cmd.Start()
 			cmd.Wait()
 			os.Remove(oldOutput)
+			if unspecifiedProgbarSize {
+				progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((float64(i)*100/float64(loopNum)), 'f', 1, 64) + "%")))
+			}
+
+			// if the progress bar length is greater than 0, print the progress bar
+			if progbarLength > 0 {
+				fmt.Print("\033[1A", utils.ProgressBar(float64(i), float64(loopNum), progbarLength))
+			} else {
+				fmt.Print("\033[1A\033[0J")
+			}
+
+			// print the percentage complete
+			fmt.Println(" ", strconv.FormatFloat((float64(i)*100/float64(loopNum)), 'f', 1, 64)+"%\033[0J")
 
 			i++
 			oldOutput = newOutput
@@ -895,6 +923,19 @@ func imageMunch(input string, inputData ffprobe.MediaData) {
 			cmd.Start()
 			cmd.Wait()
 			os.Remove(oldOutput)
+			if unspecifiedProgbarSize {
+				progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((float64(i)*100/float64(loopNum)), 'f', 1, 64) + "%")))
+			}
+
+			// if the progress bar length is greater than 0, print the progress bar
+			if progbarLength > 0 {
+				fmt.Print("\033[1A", utils.ProgressBar(float64(i), float64(loopNum), progbarLength))
+			} else {
+				fmt.Print("\033[1A\033[0J")
+			}
+
+			// print the percentage complete
+			fmt.Println(" ", strconv.FormatFloat((float64(i)*100/float64(loopNum)), 'f', 1, 64)+"%\033[0J")
 
 			i++
 			oldOutput = newOutput
@@ -915,6 +956,19 @@ func imageMunch(input string, inputData ffprobe.MediaData) {
 			cmd.Start()
 			cmd.Wait()
 			os.Remove(oldOutput)
+			if unspecifiedProgbarSize {
+				progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((float64(i)*100/float64(loopNum)), 'f', 1, 64) + "%")))
+			}
+
+			// if the progress bar length is greater than 0, print the progress bar
+			if progbarLength > 0 {
+				fmt.Print("\033[1A", utils.ProgressBar(float64(i), float64(loopNum), progbarLength))
+			} else {
+				fmt.Print("\033[1A\033[0J")
+			}
+
+			// print the percentage complete
+			fmt.Println(" ", strconv.FormatFloat((float64(i)*100/float64(loopNum)), 'f', 1, 64)+"%\033[0J")
 		}
 
 		oldOutput = newOutput
@@ -934,7 +988,18 @@ func imageMunch(input string, inputData ffprobe.MediaData) {
 		cmd.Start()
 		cmd.Wait()
 		os.Remove(oldOutput)
-	}
+		if unspecifiedProgbarSize {
+			progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((float64(loopNum)*100/float64(loopNum)), 'f', 1, 64) + "%")))
+		}
 
-	return
+		// if the progress bar length is greater than 0, print the progress bar
+		if progbarLength > 0 {
+			fmt.Print("\033[1A", utils.ProgressBar(float64(loopNum), float64(loopNum), progbarLength))
+		} else {
+			fmt.Print("\033[1A\033[0J")
+		}
+
+		// print the percentage complete
+		fmt.Println(" ", strconv.FormatFloat((float64(loopNum)*100/float64(loopNum)), 'f', 1, 64)+"%\033[0J")
+	}
 }
