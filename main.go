@@ -376,7 +376,7 @@ func videoMunch(input string, inputData ffprobe.MediaData) {
 		}
 
 		if text != "" {
-			filter.WriteString(makeTextFilter(outputWidth))
+			filter.WriteString(makeTextFilter(outputWidth, text, textFont, fontSize, textColor, textposx, textposy))
 		}
 
 		if interlace {
@@ -670,7 +670,7 @@ func imageMunch(input string, inputData ffprobe.MediaData) {
 	}
 
 	if text != "" {
-		filter.WriteString(makeTextFilter(outputWidth))
+		filter.WriteString(makeTextFilter(outputWidth, text, textFont, fontSize, textColor, textposx, textposy))
 	}
 
 	// staring ffmpeg args
@@ -931,8 +931,16 @@ func newResolution(inWidth int, inHeight int) (int, int) {
 	return outWidth, outHeight
 }
 
-func makeTextFilter(outputWidth int) string {
-	fontPath, err := findfont.Find(textFont + ".ttf")
+func makeTextFilter(
+	outWidth int,
+	inText string,
+	font string,
+	size float64,
+	color string,
+	xpos int,
+	ypos int,
+) string {
+	fontPath, err := findfont.Find(font + ".ttf")
 	if err != nil {
 		panic(err)
 	}
@@ -947,11 +955,14 @@ func makeTextFilter(outputWidth int) string {
 	if err != nil {
 		log.Fatal("\033[4m\033[31mFatal Error\033[24m: unable to create temp/font.ttf")
 	}
-	log.Print(fontPath)
+
+	filter := ",drawtext=fontfile='temp/font.ttf':text='" + inText + "':fontcolor=" + color + ":borderw=(" + strconv.FormatFloat(size*float64(outWidth/100), 'f', -1, 64) + "/12):fontsize=" + strconv.FormatFloat(size*float64(outWidth/100), 'f', -1, 64) + ":x=(w-(tw))*(" + strconv.Itoa(xpos) + "/100):y=(h-(th))*(" + strconv.Itoa(ypos) + "/100)"
+
 	if debug {
-		log.Print("text is ", text)
-		log.Print(",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + strconv.Itoa(outputWidth/len(text)*2) + "/12):fontsize=" + strconv.Itoa(outputWidth/len(text)*2) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
+		log.Println("text is ", inText)
+		log.Println("fontpath: ", fontPath)
+		log.Println(filter)
 	}
 
-	return ",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + "/12):fontsize=" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)"
+	return filter
 }
