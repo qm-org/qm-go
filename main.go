@@ -314,24 +314,8 @@ func videoMunch(input string, inputData ffprobe.MediaData) {
 		log.Print("Output scale is ", outScale)
 	}
 
-	// stretch calculations
-	aspect := strings.Split(stretch, ":")
-	aspectWidth, err := strconv.Atoi(aspect[0])
-	if err != nil {
-		log.Print(err)
-	}
-	aspectHeight, err := strconv.Atoi(aspect[1])
-	if err != nil {
-		log.Print(err)
-	}
+	outputWidth, outputHeight := newResolution(inputData.Width, inputData.Height)
 
-	if debug {
-		log.Print("aspect ratio is ", aspectWidth, " by ", aspectHeight)
-	}
-
-	// calculate the output resolution and bitrate based on that
-	outputWidth := int(math.Round(float64(inputData.Width)*outScale*float64(aspectWidth))/2) * 2
-	outputHeight := int(math.Round(float64(inputData.Height)*outScale*float64(aspectHeight))/2) * 2
 	if videoBrDiv != -1 {
 		bitrate = outputHeight * outputWidth * int(math.Sqrt(float64(outFPS))) / videoBrDiv
 	} else {
@@ -392,27 +376,7 @@ func videoMunch(input string, inputData ffprobe.MediaData) {
 		}
 
 		if text != "" {
-			fontPath, err := findfont.Find(textFont + ".ttf")
-			if err != nil {
-				panic(err)
-			}
-			if err := os.MkdirAll("temp", os.ModePerm); err != nil {
-				log.Fatal(err)
-			}
-			input, err := ioutil.ReadFile(fontPath)
-			if err != nil {
-				log.Print(err)
-			}
-			err = ioutil.WriteFile("temp/font.ttf", input, 0644)
-			if err != nil {
-				log.Fatal("\033[4m\033[31mFatal Error\033[24m: unable to create temp/font.ttf")
-			}
-			log.Print(fontPath)
-			filter.WriteString(",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + "/12):fontsize=" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
-			if debug {
-				log.Print("text is ", text)
-				log.Print(",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + string(outputWidth/len(text)*2) + "/12):fontsize=" + strconv.Itoa(outputWidth/len(text)*2) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
-			}
+			filter.WriteString(makeTextFilter(outputWidth))
 		}
 
 		if interlace {
@@ -684,24 +648,7 @@ func imageMunch(input string, inputData ffprobe.MediaData) {
 		log.Print("Output scale is ", outScale)
 	}
 
-	// stretch calculations
-	aspect := strings.Split(stretch, ":")
-	aspectWidth, err := strconv.Atoi(aspect[0])
-	if err != nil {
-		log.Print(err)
-	}
-	aspectHeight, err := strconv.Atoi(aspect[1])
-	if err != nil {
-		log.Print(err)
-	}
-
-	if debug {
-		log.Print("aspect ratio is ", aspectWidth, " by ", aspectHeight)
-	}
-
-	// calculate the output resolution
-	outputWidth := int(math.Round(float64(inputData.Width)*outScale*float64(aspectWidth))/2) * 2
-	outputHeight := int(math.Round(float64(inputData.Height)*outScale*float64(aspectHeight))/2) * 2
+	outputWidth, outputHeight := newResolution(inputData.Width, inputData.Height)
 
 	// set up the ffmpeg filter for -filter_complex
 	var filter strings.Builder
@@ -723,27 +670,7 @@ func imageMunch(input string, inputData ffprobe.MediaData) {
 	}
 
 	if text != "" {
-		fontPath, err := findfont.Find(textFont + ".ttf")
-		if err != nil {
-			panic(err)
-		}
-		if err := os.MkdirAll("temp", os.ModePerm); err != nil {
-			log.Fatal(err)
-		}
-		input, err := ioutil.ReadFile(fontPath)
-		if err != nil {
-			log.Print(err)
-		}
-		err = ioutil.WriteFile("temp/font.ttf", input, 0644)
-		if err != nil {
-			log.Fatal("\033[4m\033[31mFatal Error\033[24m: unable to create temp/font.ttf")
-		}
-		log.Print(fontPath)
-		filter.WriteString(",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + "/12):fontsize=" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
-		if debug {
-			log.Print("text is ", text)
-			log.Print(",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + strconv.Itoa(outputWidth/len(text)*2) + "/12):fontsize=" + strconv.Itoa(outputWidth/len(text)*2) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
-		}
+		filter.WriteString(makeTextFilter(outputWidth))
 	}
 
 	// staring ffmpeg args
@@ -977,4 +904,54 @@ func imageMunch(input string, inputData ffprobe.MediaData) {
 
 func getETA(startingTime time.Time, current float64, total float64) float64 {
 	return time.Since(startingTime).Seconds() * (total - current) / current
+}
+
+func newResolution(inWidth int, inHeight int) (int, int) {
+	var outWidth int
+	var outHeight int
+
+	// split aspect ratio into 2 values that can be multiplied by width and height
+	aspect := strings.Split(stretch, ":")
+	aspectWidth, err := strconv.Atoi(aspect[0])
+	if err != nil {
+		log.Print(err)
+	}
+	aspectHeight, err := strconv.Atoi(aspect[1])
+	if err != nil {
+		log.Print(err)
+	}
+
+	if outScale == -1 {
+		outScale = 1.0 / float64(preset)
+	}
+
+	outWidth = int(math.Round(float64(inWidth)*outScale*float64(aspectWidth))/2) * 2
+	outHeight = int(math.Round(float64(inHeight)*outScale*float64(aspectHeight))/2) * 2
+
+	return outWidth, outHeight
+}
+
+func makeTextFilter(outputWidth int) string {
+	fontPath, err := findfont.Find(textFont + ".ttf")
+	if err != nil {
+		panic(err)
+	}
+	if err := os.MkdirAll("temp", os.ModePerm); err != nil {
+		log.Fatal(err)
+	}
+	input, err := ioutil.ReadFile(fontPath)
+	if err != nil {
+		log.Print(err)
+	}
+	err = ioutil.WriteFile("temp/font.ttf", input, 0644)
+	if err != nil {
+		log.Fatal("\033[4m\033[31mFatal Error\033[24m: unable to create temp/font.ttf")
+	}
+	log.Print(fontPath)
+	if debug {
+		log.Print("text is ", text)
+		log.Print(",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + strconv.Itoa(outputWidth/len(text)*2) + "/12):fontsize=" + strconv.Itoa(outputWidth/len(text)*2) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)")
+	}
+
+	return ",drawtext=fontfile='temp/font.ttf':text='" + text + "':fontcolor=" + textColor + ":borderw=(" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + "/12):fontsize=" + strconv.FormatFloat(fontSize*float64(outputWidth/100), 'f', -1, 64) + ":x=(w-(tw))*(" + strconv.Itoa(textposx) + "/100):y=(h-(th))*(" + strconv.Itoa(textposy) + "/100)"
 }
