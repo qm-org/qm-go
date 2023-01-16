@@ -705,7 +705,6 @@ func imageMunch(input string, inputData ffprobe.MediaData) {
 	cmd.Wait()
 
 	var newOutput string
-	oldOutput := output
 
 	startTime := time.Now()
 	eta := 0.0
@@ -740,11 +739,10 @@ func imageMunch(input string, inputData ffprobe.MediaData) {
 		}
 
 		// if the progress bar length is greater than 0, print the progress bar
-		fmt.Println()
 		if progbarLength > 0 {
-			fmt.Print("\033[1A", utils.ProgressBar(1, float64(loopNum), progbarLength))
+			fmt.Print(utils.ProgressBar(1, float64(loopNum), progbarLength))
 		} else {
-			fmt.Print("\033[1A\033[0J")
+			fmt.Print("\033[0J")
 		}
 
 		// print the percentage complete
@@ -759,6 +757,8 @@ func imageMunch(input string, inputData ffprobe.MediaData) {
 			log.Print("mjpeg:")
 			log.Print("q:v: " + strconv.Itoa(int(float64(preset)*3.0)+10))
 		}
+
+		var oldOutput string
 
 		for i := 2; i < loopNum-1; i++ {
 			oldOutput = newOutput
