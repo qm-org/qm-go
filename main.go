@@ -260,9 +260,9 @@ func main() {
 			if debug {
 				log.Println("input is an image")
 			}
-			imageMunch(input, inputData)
+			imageMunch(input, inputData, i+1, len(inputs))
 		} else {
-			videoMunch(input, inputData)
+			videoMunch(input, inputData, i+1, len(inputs))
 		}
 
 		// check if output file exists
@@ -279,7 +279,7 @@ func main() {
 	}
 }
 
-func videoMunch(input string, inputData ffprobe.MediaData) {
+func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum int) {
 	// get input resolution
 	if debug {
 		log.Print("resolution is ", inputData.Width, " by ", inputData.Height)
@@ -519,7 +519,13 @@ func videoMunch(input string, inputData ffprobe.MediaData) {
 		log.Print(args)
 	}
 
-	fmt.Println("\033[94mEncoding file\033[36m", input, "\033[94mto\033[36m", output, "\033[0m") // print the input and output file
+	// the [x/y] thing when encoding multiple files
+	var encodingFileOutOf string
+	if totalNum != 1 {
+		encodingFileOutOf = "[" + strconv.Itoa(inNum) + "/" + strconv.Itoa(totalNum) + "] "
+	}
+
+	fmt.Println("\033[94m"+encodingFileOutOf+"Encoding file\033[36m", input, "\033[94mto\033[36m", output, "\033[0m") // print the input and output file
 
 	// start ffmpeg for encoding
 	cmd := exec.Command("ffmpeg", args...)
@@ -636,7 +642,7 @@ func videoMunch(input string, inputData ffprobe.MediaData) {
 	)
 }
 
-func imageMunch(input string, inputData ffprobe.MediaData) {
+func imageMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum int) {
 	if debug {
 		log.Print("resolution is ", inputData.Width, " by ", inputData.Height)
 	}
@@ -697,7 +703,13 @@ func imageMunch(input string, inputData ffprobe.MediaData) {
 		log.Print(args)
 	}
 
-	fmt.Println("\033[94mEncoding file\033[36m", input, "\033[94mto\033[36m", output, "\033[0m") // print the input and output file
+	// the [x/y] thing when encoding multiple files
+	var encodingFileOutOf string
+	if totalNum != 1 {
+		encodingFileOutOf = "[" + strconv.Itoa(inNum) + "/" + strconv.Itoa(totalNum) + "] "
+	}
+
+	fmt.Println("\033[94m"+encodingFileOutOf+"Encoding file\033[36m", input, "\033[94mto\033[36m", output, "\033[0m") // print the input and output file
 
 	// start ffmpeg for encoding
 	cmd := exec.Command("ffmpeg", args...)
