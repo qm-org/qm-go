@@ -1,5 +1,5 @@
 /*
-Quality Muncher Go (QM:GO) - a program to make videos lower in quality
+Quality Muncher Go (QM:GO) - a program to worsen the quality of media files
 Copyright (C) 2022 Quality Muncher Organization
 
 This program is free software: you can redistribute it and/or modify
@@ -121,13 +121,15 @@ func init() {
 	pflag.BoolVar(&formattingCodes, "formatting-codes", false, "Print out ANSI escape/formatting codes")
 	pflag.Parse()
 
-	// check for invalid arguments
+	// check for invalid input
 	if inputs[0] == "" {
 		log.Fatal("No input was specified")
 	}
+	// negative start time would give an output with no video so throw an error
 	if start < 0 {
 		log.Fatal("Start time cannot be negative")
 	}
+	// if start time is greater than or equal to end time, output length would be 0 so throw an error
 	if start >= end && end != -1 {
 		log.Fatal("Start time cannot be greater than or equal to end time")
 	}
@@ -135,7 +137,7 @@ func init() {
 		log.Fatal("Cannot specify both duration and end time")
 	}
 
-	// set some bools for making sure certain variables can be overwritten later
+	// make sure that we know when the progress bar length is unspecified so we can set it automatically
 	if progbarLength == -1 {
 		unspecifiedProgbarSize = true
 	} else {
@@ -186,15 +188,18 @@ func main() {
 		)
 	}
 
+	// loop for each provided input because we support queueing multiple inputs
 	for i, input := range inputs {
 		// check if input file exists
 		_, err := os.Stat(input)
+		// if it doesn't exist, skip this input and go to the next one
 		if err != nil {
 			if os.IsNotExist(err) {
 				log.Println("\033[4m\033[31mFatal Error\033[24m: input file " + input + " does not exist\033[0m")
 				continue
 			} else {
-				fmt.Println("\033[4m\033[38;2;254;165;0mWarning\033[24m: Input file " + input + " might not exist\033[0m")
+				// the input file exists but can't be accessed for some reason
+				fmt.Println("\033[4m\033[38;2;254;165;0mWarning\033[24m: Input file " + input + " might not be accessible\033[0m")
 			}
 		}
 
@@ -208,25 +213,20 @@ func main() {
 			log.Println("input #: " + strconv.Itoa(i))
 		}
 
+		// get input data: width, height, duration, and framerate
 		inputData, _ := ffprobe.ProbeData(input)
 
+		// assume that the input is a video unless proven otherwise
+		isImage := false
 		outExt := ".mp4"
 
-		// check if image or video
-		isImage := false
-		if inputData.Duration < 0.1 {
-			if ffprobe.FrameCount(input) == 1 {
+		// if the duration is less than 1.0 seconds, check the frame count\
+		// only check the frame count when needed because it's slow
+		if inputData.Duration < 1.0 {
+			if ffprobe.FrameCount(input) == 1 { // if there's only one frame, it's an image
 				log.Print("duration: ", inputData.Duration)
 				isImage = true
 				outExt = ".jpg"
-			} else {
-				if start >= inputData.Duration {
-					log.Fatal("Start time cannot be greater than or equal to input duration")
-				}
-			}
-		} else {
-			if start >= inputData.Duration {
-				log.Fatal("Start time cannot be greater than or equal to input duration")
 			}
 		}
 
@@ -241,7 +241,7 @@ func main() {
 			output = strings.TrimSuffix(input, filepath.Ext(input)) + " (Quality Munched)" + outExt
 		}
 
-		// check if output file exists
+		// check if output file already exists
 		_, outExistErr := os.Stat(output)
 		if outExistErr == nil {
 			if debug {
@@ -249,7 +249,7 @@ func main() {
 			}
 			var confirm string
 			fmt.Println("\033[4m\033[31mWarning\033[24m: The output file\033[91m", output, "\033[31malready exists! Overwrite? [Y/N]\033[0m")
-			fmt.Scanln(&confirm)
+			fmt.Scanln(&confirm) // get user input, confirming that they want to overwrite the output file
 			if confirm != "Y" && confirm != "y" {
 				log.Fatal("Aborted by user - output file already exists")
 			}
@@ -260,9 +260,12 @@ func main() {
 			if debug {
 				log.Println("input is an image")
 			}
-			imageMunch(input, inputData, i+1, len(inputs))
+			imageMunch(input, inputData, i+1, len(inputs)) // encode the image
 		} else {
-			videoMunch(input, inputData, i+1, len(inputs))
+			if start >= inputData.Duration {
+				log.Fatal("Start time cannot be greater than or equal to input duration")
+			}
+			videoMunch(input, inputData, i+1, len(inputs)) // encode the video
 		}
 
 		// check if output file exists
@@ -289,6 +292,9 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	if outFPS == -1 {
 		outFPS = 24 - (3 * preset)
 	}
+	if debug {
+		log.Print("Output FPS is ", outFPS)
+	}
 	var fpsFilter string = "fps=" + strconv.Itoa(outFPS)
 	var tmixFrames int = 0
 	if resample {
@@ -303,10 +309,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 		}
 	}
 
-	if debug {
-		log.Print("Output FPS is ", outFPS)
-	}
-
+	// if the output scale isn't explicitly set, calculate it using the given preset
 	if outScale == -1 {
 		outScale = 1.0 / float64(preset)
 	}
@@ -314,8 +317,10 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 		log.Print("Output scale is ", outScale)
 	}
 
+	// calculate the output resolution
 	outputWidth, outputHeight := newResolution(inputData.Width, inputData.Height)
 
+	// calculate the video bitrate
 	if videoBrDiv != -1 {
 		bitrate = outputHeight * outputWidth * int(math.Sqrt(float64(outFPS))) / videoBrDiv
 	} else {
@@ -452,19 +457,20 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 		"-stats_period", strconv.FormatFloat(updateSpeed, 'f', -1, 64),
 	}
 
-	if start != 0 {
+	if start != 0 { // if start is specified
 		args = append(args, "-ss", strconv.FormatFloat(start, 'f', -1, 64)) // -ss is the start time
 	}
 
-	if end != -1 {
+	if end != -1 { // if end is specified
 		outDuration = end - start
 	}
 
-	if outDuration != -1 {
+	if outDuration != -1 { // if the duration is specified
 		args = append(args, "-t", strconv.FormatFloat(outDuration, 'f', -1, 64)) // -t sets the duration
 	}
 
-	if noVideo { // remove video if noVideo is true
+	// remove video if the user wants no video
+	if noVideo {
 		args = append(args, "-vn")
 		if debug {
 			log.Print("no video")
@@ -479,6 +485,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 		}
 	}
 
+	// add the input to the ffmpeg args
 	args = append(args,
 		"-i", input,
 	)
