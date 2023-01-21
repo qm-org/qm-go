@@ -65,17 +65,12 @@ var (
 	interlace                 bool
 	lagfun                    bool
 	resample                  bool
-	corruptAmount             int
 	text, textFont, textColor string
 	textposx, textposy        int
 	fontSize                  float64
-	formattingCodes           bool
 
 	// other variables
-	audioBitrate           int
-	corruptFilter          string
 	unspecifiedProgbarSize bool
-	bitrate                int
 )
 
 func init() {
@@ -118,7 +113,6 @@ func init() {
 	pflag.IntVar(&textposx, "text-pos-x", 50, "horizontal position of text, 0 is far left, 100 is far right")
 	pflag.IntVar(&textposy, "text-pos-y", 90, "vertical position of text, 0 is top, 100 is bottom")
 	pflag.Float64Var(&fontSize, "font-size", 12, "Font size (scales with output width")
-	pflag.BoolVar(&formattingCodes, "formatting-codes", false, "Print out ANSI escape/formatting codes")
 	pflag.Parse()
 
 	// check for invalid input
@@ -320,6 +314,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	// calculate the output resolution
 	outputWidth, outputHeight := newResolution(inputData.Width, inputData.Height)
 
+	var bitrate int
 	// calculate the video bitrate
 	if videoBrDiv != -1 {
 		bitrate = outputHeight * outputWidth * int(math.Sqrt(float64(outFPS))) / videoBrDiv
@@ -327,6 +322,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 		bitrate = outputHeight * outputWidth * int(math.Sqrt(float64(outFPS))) / preset
 	}
 
+	var audioBitrate int
 	// calculate the audio bitrate
 	if audioBrDiv != -1 {
 		audioBitrate = 80000 / audioBrDiv
@@ -435,6 +431,8 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 		log.Print("no audio, ignoring all audio filters")
 	}
 
+	var corruptAmount int
+	var corruptFilter string
 	// corruption calculations based on width and height
 	if corrupt != 0 {
 		// amount of corruption is based on the bitrate of the video, the amount of corruption, and the size of the video
