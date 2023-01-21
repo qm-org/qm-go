@@ -536,7 +536,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 
 	// start ffmpeg for encoding
 	cmd := exec.Command("ffmpeg", args...)
-	stderr, _ := cmd.StdoutPipe()
+	stdout, _ := cmd.StdoutPipe()
 	cmd.Start()
 
 	// variables for progress bar and stats
@@ -563,7 +563,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	fmt.Println(utils.ProgressBar(0.0, realOutputDuration, progbarLength))
 
 	// start the progress bar updater until the video is done encoding
-	scanner := bufio.NewScanner(stderr)
+	scanner := bufio.NewScanner(stdout)
 	scanner.Split(bufio.ScanRunes)
 	for scanner.Scan() {
 		// accumulate the text from the scanner
