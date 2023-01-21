@@ -44,7 +44,7 @@ var (
 	inputs                    []string
 	debug                     bool
 	progbarLength             int
-	loopNum                   int
+	imagePasses               int
 	loglevel                  string
 	updateSpeed               float64
 	noVideo, noAudio          bool
@@ -84,7 +84,7 @@ func init() {
 	pflag.StringVarP(&output, "output", "o", "", "Specify the output file")
 	pflag.BoolVarP(&debug, "debug", "d", false, "Print out debug information")
 	pflag.IntVar(&progbarLength, "progress-bar", -1, "Length of progress bar, defaults based on terminal width")
-	pflag.IntVar(&loopNum, "loop", 1, "Number of time to compress the input. ONLY USED FOR IMAGES.")
+	pflag.IntVar(&imagePasses, "loop", 1, "Number of time to compress the input. ONLY USED FOR IMAGES.")
 	pflag.StringVar(&loglevel, "loglevel", "error", "Specify the log level for ffmpeg")
 	pflag.Float64Var(&updateSpeed, "update-speed", 0.0167, "Specify the speed at which stats will be updated")
 	pflag.BoolVar(&noVideo, "no-video", false, "Produces an output with no video")
@@ -154,7 +154,7 @@ func main() {
 			output,
 			debug,
 			progbarLength,
-			loopNum,
+			imagePasses,
 			loglevel,
 			updateSpeed,
 			noVideo,
@@ -728,7 +728,7 @@ func imageMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	startTime := time.Now()
 	eta := 0.0
 
-	if loopNum > 1 {
+	if imagePasses > 1 {
 		if err := os.MkdirAll("temp", os.ModePerm); err != nil {
 			log.Fatal(err)
 		}
@@ -754,18 +754,18 @@ func imageMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 
 		// if the progress bar length is not set, set it to the length of the longest possible progress bar
 		if unspecifiedProgbarSize {
-			progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((1*100/float64(loopNum)), 'f', 1, 64) + "%" + " ETA: " + utils.TrimTime(utils.FormatTime(eta)))))
+			progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((1*100/float64(imagePasses)), 'f', 1, 64) + "%" + " ETA: " + utils.TrimTime(utils.FormatTime(eta)))))
 		}
 
 		// if the progress bar length is greater than 0, print the progress bar
 		if progbarLength > 0 {
-			fmt.Print(utils.ProgressBar(1, float64(loopNum), progbarLength))
+			fmt.Print(utils.ProgressBar(1, float64(imagePasses), progbarLength))
 		} else {
 			fmt.Print("\033[0J")
 		}
 
 		// print the percentage complete
-		fmt.Println(" ", strconv.FormatFloat((1*100/float64(loopNum)), 'f', 1, 64)+"%"+" ETA: "+utils.TrimTime(utils.FormatTime(eta))+"\033[0J")
+		fmt.Println(" ", strconv.FormatFloat((1*100/float64(imagePasses)), 'f', 1, 64)+"%"+" ETA: "+utils.TrimTime(utils.FormatTime(eta))+"\033[0J")
 
 		if debug {
 			log.Print("libwebp:")
@@ -779,7 +779,7 @@ func imageMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 
 		var oldOutput string
 
-		for i := 2; i < loopNum-1; i++ {
+		for i := 2; i < imagePasses-1; i++ {
 			oldOutput = newOutput
 			newOutput = "temp/loop" + strconv.Itoa(i) + ".png"
 			cmd = exec.Command(
@@ -800,20 +800,20 @@ func imageMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 			cmd.Wait()
 			os.Remove(oldOutput)
 
-			eta = getETA(startTime, float64(i), float64(loopNum))
+			eta = getETA(startTime, float64(i), float64(imagePasses))
 			if unspecifiedProgbarSize {
-				progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((float64(i)*100/float64(loopNum)), 'f', 1, 64) + "%" + " ETA: " + utils.TrimTime(utils.FormatTime(eta)))))
+				progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((float64(i)*100/float64(imagePasses)), 'f', 1, 64) + "%" + " ETA: " + utils.TrimTime(utils.FormatTime(eta)))))
 			}
 
 			// if the progress bar length is greater than 0, print the progress bar
 			if progbarLength > 0 {
-				fmt.Print("\033[1A", utils.ProgressBar(float64(i), float64(loopNum), progbarLength))
+				fmt.Print("\033[1A", utils.ProgressBar(float64(i), float64(imagePasses), progbarLength))
 			} else {
 				fmt.Print("\033[1A\033[0J")
 			}
 
 			// print the percentage complete
-			fmt.Println(" ", strconv.FormatFloat((float64(i)*100/float64(loopNum)), 'f', 1, 64)+"%"+" ETA: "+utils.TrimTime(utils.FormatTime(eta))+"\033[0J")
+			fmt.Println(" ", strconv.FormatFloat((float64(i)*100/float64(imagePasses)), 'f', 1, 64)+"%"+" ETA: "+utils.TrimTime(utils.FormatTime(eta))+"\033[0J")
 
 			i++
 			oldOutput = newOutput
@@ -835,20 +835,20 @@ func imageMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 			cmd.Wait()
 			os.Remove(oldOutput)
 
-			eta = getETA(startTime, float64(i), float64(loopNum))
+			eta = getETA(startTime, float64(i), float64(imagePasses))
 			if unspecifiedProgbarSize {
-				progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((float64(i)*100/float64(loopNum)), 'f', 1, 64) + "%" + " ETA: " + utils.TrimTime(utils.FormatTime(eta)))))
+				progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((float64(i)*100/float64(imagePasses)), 'f', 1, 64) + "%" + " ETA: " + utils.TrimTime(utils.FormatTime(eta)))))
 			}
 
 			// if the progress bar length is greater than 0, print the progress bar
 			if progbarLength > 0 {
-				fmt.Print("\033[1A", utils.ProgressBar(float64(i), float64(loopNum), progbarLength))
+				fmt.Print("\033[1A", utils.ProgressBar(float64(i), float64(imagePasses), progbarLength))
 			} else {
 				fmt.Print("\033[1A\033[0J")
 			}
 
 			// print the percentage complete
-			fmt.Println(" ", strconv.FormatFloat((float64(i)*100/float64(loopNum)), 'f', 1, 64)+"%"+" ETA: "+utils.TrimTime(utils.FormatTime(eta))+"\033[0J")
+			fmt.Println(" ", strconv.FormatFloat((float64(i)*100/float64(imagePasses)), 'f', 1, 64)+"%"+" ETA: "+utils.TrimTime(utils.FormatTime(eta))+"\033[0J")
 
 			i++
 			oldOutput = newOutput
@@ -870,20 +870,20 @@ func imageMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 			cmd.Wait()
 			os.Remove(oldOutput)
 
-			eta = getETA(startTime, float64(i), float64(loopNum))
+			eta = getETA(startTime, float64(i), float64(imagePasses))
 			if unspecifiedProgbarSize {
-				progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((float64(i)*100/float64(loopNum)), 'f', 1, 64) + "%" + " ETA: " + utils.TrimTime(utils.FormatTime(eta)))))
+				progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((float64(i)*100/float64(imagePasses)), 'f', 1, 64) + "%" + " ETA: " + utils.TrimTime(utils.FormatTime(eta)))))
 			}
 
 			// if the progress bar length is greater than 0, print the progress bar
 			if progbarLength > 0 {
-				fmt.Print("\033[1A", utils.ProgressBar(float64(i), float64(loopNum), progbarLength))
+				fmt.Print("\033[1A", utils.ProgressBar(float64(i), float64(imagePasses), progbarLength))
 			} else {
 				fmt.Print("\033[1A\033[0J")
 			}
 
 			// print the percentage complete
-			fmt.Println(" ", strconv.FormatFloat((float64(i)*100/float64(loopNum)), 'f', 1, 64)+"%"+" ETA: "+utils.TrimTime(utils.FormatTime(eta))+"\033[0J")
+			fmt.Println(" ", strconv.FormatFloat((float64(i)*100/float64(imagePasses)), 'f', 1, 64)+"%"+" ETA: "+utils.TrimTime(utils.FormatTime(eta))+"\033[0J")
 		}
 
 		oldOutput = newOutput
@@ -904,20 +904,20 @@ func imageMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 		cmd.Wait()
 		os.Remove(oldOutput)
 
-		eta = getETA(startTime, float64(loopNum), float64(loopNum))
+		eta = getETA(startTime, float64(imagePasses), float64(imagePasses))
 		if unspecifiedProgbarSize {
-			progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((float64(loopNum)*100/float64(loopNum)), 'f', 1, 64) + "%" + " ETA: " + utils.TrimTime(utils.FormatTime(eta)))))
+			progbarLength = utils.ProgbarSize(len(" " + (strconv.FormatFloat((float64(imagePasses)*100/float64(imagePasses)), 'f', 1, 64) + "%" + " ETA: " + utils.TrimTime(utils.FormatTime(eta)))))
 		}
 
 		// if the progress bar length is greater than 0, print the progress bar
 		if progbarLength > 0 {
-			fmt.Print("\033[1A", utils.ProgressBar(float64(loopNum), float64(loopNum), progbarLength))
+			fmt.Print("\033[1A", utils.ProgressBar(float64(imagePasses), float64(imagePasses), progbarLength))
 		} else {
 			fmt.Print("\033[1A\033[0J")
 		}
 
 		// print the percentage complete
-		fmt.Println(" ", strconv.FormatFloat((float64(loopNum)*100/float64(loopNum)), 'f', 1, 64)+"%"+" ETA: "+utils.TrimTime(utils.FormatTime(eta))+"\033[0J")
+		fmt.Println(" ", strconv.FormatFloat((float64(imagePasses)*100/float64(imagePasses)), 'f', 1, 64)+"%"+" ETA: "+utils.TrimTime(utils.FormatTime(eta))+"\033[0J")
 	}
 }
 
