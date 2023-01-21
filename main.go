@@ -142,7 +142,7 @@ func init() {
 func main() {
 	// throw out all flags if debug is enabled
 	if debug {
-		log.Print("throwing all flags out")
+		log.Println("throwing all flags out")
 		log.Println(
 			inputs,
 			output,
