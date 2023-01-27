@@ -1,13 +1,14 @@
 # Quality Muncher Go
-Quality Muncher Go (aka QM:GO) is a program written to make low quality videos, images, GIFs, and audios.
+Quality Muncher Go (aka QM:GO) is a program written to make low quality videos, images, GIFs, and audios. (GIFs are currently a work-in-progress)
 
 ## Usage
 Below are the flags. The only needed flag is the input, as all of the others have default values or are disabled by default.
 ```
-  -i, --input string           Specify the input file
+  -i, --input strings          Specify the input file(s)
   -o, --output string          Specify the output file
   -d, --debug                  Print out debug information
       --progress-bar int       Length of progress bar, defaults based on terminal width (default -1)
+      --loop int               Number of time to compress the input. ONLY USED FOR IMAGES. (default 1)
       --loglevel string        Specify the log level for ffmpeg (default "error")
       --update-speed float     Specify the speed at which stats will be updated (default 0.0167)
       --no-video               Produces an output with no video
@@ -44,7 +45,7 @@ Below are the flags. The only needed flag is the input, as all of the others hav
 ```
 
 ## Builds
-I'll release them every now and then, but you can always build your own as it's very simple.
+Builds are released whenever I make a significant change to the program or whenever I remember to.
 
-## Disclaimer
-This is barely functional and still VERY much in the alpha stages of development.
+## License
+QM:GO is currently using the GPL v3.0 license, which can be found in the LICENSE file.
