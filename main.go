@@ -189,7 +189,7 @@ func main() {
 		// if it doesn't exist, skip this input and go to the next one
 		if err != nil {
 			if os.IsNotExist(err) {
-				log.Println("\033[4m\033[31mFatal Error\033[24m: input file " + input + " does not exist\033[0m")
+				log.Println("\033[4m\033[mError\033[24m: input file " + input + " does not exist\033[0m")
 				continue
 			} else {
 				// the input file exists but can't be accessed for some reason
@@ -207,16 +207,37 @@ func main() {
 			log.Println("input #: " + strconv.Itoa(i))
 		}
 
+		// i have no clue how this works but i remember writing it and it works so i'm not touching it
+		// maybe i should stop using triple negatives in my variable names/code
+		renderVideo := !noVideo
+		renderAudio := !noAudio
+		if !noVideo {
+			renderVideo = Stream(input, "v:0")
+		}
+		if len(string(replaceAudio)) == 0 {
+			if !noAudio {
+				renderAudio = Stream(input, "a:0")
+			}
+		}
+
 		// get input data: width, height, duration, and framerate
 		inputData, _ := ffprobe.ProbeData(input)
 
 		// assume that the input is a video unless proven otherwise
 		isImage := false
 		outExt := ".mp4"
+		if renderAudio && !renderVideo {
+			outExt = ".mp3"
+		}
+
+		if !renderVideo && !renderAudio {
+			log.Println("\033[4m\033[mError\033[24m: Cannot encode video without audio or video streams\033[0m")
+			continue
+		}
 
 		// if the duration is less than 1.0 seconds, check the frame count\
 		// only check the frame count when needed because it's slow
-		if inputData.Duration < 1.0 {
+		if inputData.Duration < 1.0 && renderVideo {
 			if ffprobe.FrameCount(input) == 1 { // if there's only one frame, it's an image
 				log.Print("duration: ", inputData.Duration)
 				isImage = true
@@ -245,7 +266,8 @@ func main() {
 			fmt.Println("\033[4m\033[31mWarning\033[24m: The output file\033[91m", output, "\033[31malready exists! Overwrite? [Y/N]\033[0m")
 			fmt.Scanln(&confirm) // get user input, confirming that they want to overwrite the output file
 			if confirm != "Y" && confirm != "y" {
-				log.Fatal("Aborted by user - output file already exists")
+				log.Println("Aborted by user - output file already exists")
+				continue
 			}
 		}
 
@@ -259,7 +281,7 @@ func main() {
 			if start >= inputData.Duration {
 				log.Fatal("Start time cannot be greater than or equal to input duration")
 			}
-			videoMunch(input, inputData, i+1, len(inputs)) // encode the video
+			videoMunch(input, inputData, i+1, len(inputs), renderVideo, renderAudio) // encode the video
 		}
 
 		// check if output file exists
@@ -276,7 +298,12 @@ func main() {
 	}
 }
 
-func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum int) {
+func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum int, renderVideo bool, renderAudio bool) {
+	if !renderVideo {
+		inputData.Width = 1
+		inputData.Height = 1
+		inputData.Framerate = 1.0
+	}
 	// get input resolution
 	if debug {
 		log.Print("resolution is ", inputData.Width, " by ", inputData.Height)
@@ -338,7 +365,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	var filter strings.Builder
 
 	// if NOT using --no-video, set add the specified video filters to filter
-	if !(noVideo) {
+	if renderVideo {
 		if speed != 1 {
 			filter.WriteString("setpts=(1/" + strconv.FormatFloat(speed, 'f', -1, 64) + ")*PTS,")
 			if debug {
@@ -407,7 +434,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	}
 
 	// if not using --no-audio, set add the specified audio filters to filter
-	if !(noAudio) {
+	if renderAudio {
 		if volume != 0 {
 			filter.WriteString(";volume=" + strconv.Itoa(volume))
 			if debug {
@@ -468,7 +495,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	}
 
 	// remove video if the user wants no video
-	if noVideo {
+	if !renderVideo {
 		args = append(args, "-vn")
 		if debug {
 			log.Print("no video")
@@ -476,7 +503,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	}
 
 	// remove audio if noAudio is true
-	if noAudio {
+	if !renderAudio {
 		args = append(args, "-an") // removes audio
 		if debug {
 			log.Print("no audio")
@@ -499,14 +526,23 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	}
 
 	// more always-used args
-	args = append(args,
-		"-preset", "ultrafast",
-		"-shortest",
-		"-c:v", "libx264",
-		"-b:v", strconv.Itoa(int(bitrate)),
-		"-c:a", "aac",
-		"-b:a", strconv.Itoa(int(audioBitrate)),
-	)
+	if renderVideo {
+		args = append(args,
+			"-preset", "ultrafast",
+			"-shortest",
+			"-c:v", "libx264",
+			"-b:v", strconv.Itoa(int(bitrate)),
+			"-c:a", "aac",
+			"-b:a", strconv.Itoa(int(audioBitrate)),
+		)
+	} else {
+		args = append(args,
+			"-shortest",
+			"-b:v", strconv.Itoa(int(bitrate)),
+			"-c:a", "libmp3lame",
+			"-b:a", strconv.Itoa(int(audioBitrate)),
+		)
+	}
 
 	// if any filters are being used, add them
 	if len(filter.String()) != 0 {
@@ -982,4 +1018,41 @@ func makeTextFilter(
 	}
 
 	return filter
+}
+
+/*
+ffprobe -i %inputvideo% -show_streams -select_streams a -loglevel error > %qmtemp%\astream.txt
+set /p astream=<%qmtemp%\astream.txt
+if exist "%qmtemp%\astream.txt" (del "%qmtemp%\astream.txt")
+if not defined astream (
+    echo Input does not have an audio stream>>"%temp%\qualitymuncherdebuglog.txt"
+    set hasaudio=n
+) else (
+    echo Input has an audio stream>>"%temp%\qualitymuncherdebuglog.txt"
+    set hasaudio=y
+)
+ffprobe -i %inputvideo% -show_streams -select_streams v -loglevel error > %qmtemp%\vstream.txt
+set /p vstream=<%qmtemp%\vstream.txt
+if exist "%qmtemp%\vstream.txt" (del "%qmtemp%\vstream.txt")
+call :loadinganimation
+if 1%vstream% == 1
+*/
+
+func Stream(input string, stream string) bool {
+	args := []string{
+		"-i", input,
+		"-show_entries", "stream=duration",
+		"-select_streams", stream,
+		"-count_packets",
+		"-of", "csv=p=0",
+	}
+
+	cmd := exec.Command("ffprobe", args...)
+
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+
+	return len(string(out)) != 0
 }

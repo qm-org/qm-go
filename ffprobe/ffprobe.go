@@ -59,6 +59,37 @@ func ProbeData(input string) (MediaData, error) {
 	}
 
 	outs := string(out)
+	if outs == "" {
+		args = []string{
+			"-i", input,
+			"-show_entries", "stream=duration",
+			"-select_streams", "a:0",
+			"-of", "csv=p=0",
+		}
+
+		cmd := exec.Command("ffprobe", args...)
+
+		out, err := cmd.Output()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		outs := string(out)
+
+		outs = strings.TrimSuffix(outs, "\n") // removing the newline at the end of the output
+		outs = strings.TrimSuffix(outs, "\r") // windows includes a carriage return, so we remove that too
+		outs = strings.TrimSuffix(outs, "\n") // just in case there's a newline after the carriage return, because why not
+
+		allargs := strings.Split(outs, ",")
+
+		duration, _ := strconv.ParseFloat(allargs[0], 64)
+
+		var outInfo MediaData
+
+		outInfo.Duration = duration
+
+		return outInfo, nil
+	}
 	outs = strings.TrimSuffix(outs, "\n") // removing the newline at the end of the output
 	outs = strings.TrimSuffix(outs, "\r") // windows includes a carriage return, so we remove that too
 	outs = strings.TrimSuffix(outs, "\n") // just in case there's a newline after the carriage return, because why not
@@ -91,5 +122,4 @@ func ProbeData(input string) (MediaData, error) {
 	outInfo.Duration = duration
 
 	return outInfo, nil
-
 }
