@@ -189,11 +189,11 @@ func main() {
 		// if it doesn't exist, skip this input and go to the next one
 		if err != nil {
 			if os.IsNotExist(err) {
-				log.Println("\033[4m\033[mError\033[24m: input file " + input + " does not exist\033[0m")
+				log.Println("\033[4m\033[31mError\033[24m: input file \033[91m" + input + " \033[31mdoes not exist\033[0m")
 				continue
 			} else {
 				// the input file exists but can't be accessed for some reason
-				fmt.Println("\033[4m\033[38;2;254;165;0mWarning\033[24m: Input file " + input + " might not be accessible\033[0m")
+				fmt.Println("\033[4m\033[38;2;250;169;30mWarning\033[24m: Input file \033[38;2;250;182;37m" + input + " \033[38;2;250;169;30mmight not be accessible\033[0m")
 			}
 		}
 
@@ -263,7 +263,7 @@ func main() {
 				log.Print("output file already exists")
 			}
 			var confirm string
-			fmt.Println("\033[4m\033[31mWarning\033[24m: The output file\033[91m", output, "\033[31malready exists! Overwrite? [Y/N]\033[0m")
+			fmt.Println("\033[4m\033[38;2;250;169;30mWarning\033[24m: The output file\033[38;2;250;182;37m", output, "\033[38;2;250;169;30malready exists! Overwrite? [Y/N]\033[0m")
 			fmt.Scanln(&confirm) // get user input, confirming that they want to overwrite the output file
 			if confirm != "Y" && confirm != "y" {
 				log.Println("Aborted by user - output file already exists")
