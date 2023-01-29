@@ -62,6 +62,7 @@ var (
 	stutter                   int
 	vignette                  float64
 	corrupt                   int
+	fry                       int
 	interlace                 bool
 	lagfun                    bool
 	resample                  bool
@@ -85,34 +86,35 @@ func init() {
 	pflag.BoolVar(&noVideo, "no-video", false, "Produces an output with no video")
 	pflag.BoolVar(&noAudio, "no-audio", false, "Produces an output with no audio")
 	pflag.StringVar(&replaceAudio, "replace-audio", "", "Replace the audio with the specified file")
-	pflag.IntVarP(&preset, "preset", "p", 4, "Specify the quality preset")
+	pflag.IntVarP(&preset, "preset", "p", 4, "Specify the quality preset (1-7, higher = worse)")
 	pflag.Float64Var(&start, "start", 0, "Specify the start time of the output")
 	pflag.Float64Var(&end, "end", -1, "Specify the end time of the output, cannot be used when duration is specified")
 	pflag.Float64Var(&outDuration, "duration", -1, "Specify the duration of the output, cannot be used when end is specified")
 	pflag.IntVarP(&volume, "volume", "v", 0, "Specify the amount to increase or decrease the volume by, in dB")
 	pflag.Float64VarP(&outScale, "scale", "s", -1, "Specify the output scale")
-	pflag.IntVar(&videoBrDiv, "video-bitrate", -1, "Specify the video bitrate divisor")
+	pflag.IntVar(&videoBrDiv, "video-bitrate", -1, "Specify the video bitrate divisor (higher = worse)")
 	pflag.IntVar(&videoBrDiv, "vb", videoBrDiv, "Shorthand for --video-bitrate")
-	pflag.IntVar(&audioBrDiv, "audio-bitrate", -1, "Specify the audio bitrate divisor")
+	pflag.IntVar(&audioBrDiv, "audio-bitrate", -1, "Specify the audio bitrate divisor (higher = worse)")
 	pflag.IntVar(&audioBrDiv, "ab", audioBrDiv, "Shorthand for --audio-bitrate")
 	pflag.StringVar(&stretch, "stretch", "1:1", "Modify the existing aspect ratio")
-	pflag.IntVar(&outFPS, "fps", -1, "Specify the output fps")
+	pflag.IntVar(&outFPS, "fps", -1, "Specify the output fps (lower = worse)")
 	pflag.Float64Var(&speed, "speed", 1.0, "Specify the video and audio speed")
 	pflag.Float64VarP(&zoom, "zoom", "z", 1, "Specify the amount to zoom in or out")
 	pflag.Float64Var(&fadein, "fade-in", 0, "Fade in duration")
 	pflag.Float64Var(&fadeout, "fade-out", 0, "Fade out duration")
-	pflag.IntVar(&stutter, "stutter", 0, "Randomize the order of a frames")
+	pflag.IntVar(&stutter, "stutter", 0, "Randomize the order of a frames (higher = more stutter)")
 	pflag.Float64Var(&vignette, "vignette", 0, "Specify the amount of vignette")
-	pflag.IntVar(&corrupt, "corrupt", 0, "Corrupt the output")
+	pflag.IntVar(&corrupt, "corrupt", 0, "Corrupt the output (1-10, higher = worse)")
+	pflag.IntVar(&fry, "deep-fry", 0, "Deep-fry the output (1-10, higher = worse)")
 	pflag.BoolVar(&interlace, "interlace", false, "Interlace the output")
 	pflag.BoolVar(&lagfun, "lagfun", false, "Force darker pixels to update slower")
 	pflag.BoolVar(&resample, "resample", false, "Blend frames together instead of dropping them")
 	pflag.StringVarP(&text, "text", "t", "", "Text to add (if empty, no text)")
 	pflag.StringVar(&textFont, "text-font", "arial", "Text to add (if empty, no text)")
 	pflag.StringVar(&textColor, "text-color", "white", "Text color")
-	pflag.IntVar(&textposx, "text-pos-x", 50, "horizontal position of text, 0 is far left, 100 is far right")
-	pflag.IntVar(&textposy, "text-pos-y", 90, "vertical position of text, 0 is top, 100 is bottom")
-	pflag.Float64Var(&fontSize, "font-size", 12, "Font size (scales with output width")
+	pflag.IntVar(&textposx, "text-pos-x", 50, "horizontal position of text (0 is far left, 100 is far right)")
+	pflag.IntVar(&textposy, "text-pos-y", 90, "vertical position of text (0 is top, 100 is bottom)")
+	pflag.Float64Var(&fontSize, "font-size", 12, "Font size (scales with output width)")
 	pflag.Parse()
 
 	// check for invalid input
@@ -250,10 +252,15 @@ func main() {
 			output = strings.TrimSuffix(input, filepath.Ext(input)) + " (Quality Munched)" + outExt
 		}
 		if output == "" {
+			output = strings.TrimSuffix(input, filepath.Ext(input)) + " (Quality Munched)" + outExt
 			if debug {
 				log.Println("No output was specified, using input name plus (Quality Munched)")
+				log.Println("output: " + output)
 			}
-			output = strings.TrimSuffix(input, filepath.Ext(input)) + " (Quality Munched)" + outExt
+		} else {
+			if !strings.Contains(output, ":") {
+				output = filepath.Dir(input) + "/" + output
+			}
 		}
 
 		// check if output file already exists
@@ -419,6 +426,13 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 			filter.WriteString(",random=frames=" + strconv.Itoa(stutter))
 			if debug {
 				log.Print("stutter is ", stutter)
+			}
+		}
+
+		if fry != 0 {
+			filter.WriteString("," + "eq=saturation=" + strconv.FormatFloat(float64(fry)*0.15+0.85, 'f', -1, 64) + ":contrast=" + strconv.Itoa(fry) + ",unsharp=5:5:1.25:5:5:" + strconv.FormatFloat(float64(fry)/6.66, 'f', -1, 64) + ",noise=alls=" + strconv.Itoa(fry*5) + ":allf=t")
+			if debug {
+				log.Print("fry is ", ","+"eq=saturation="+strconv.FormatFloat(float64(fry)*0.15+0.85, 'f', -1, 64)+":contrast="+strconv.Itoa(fry)+",unsharp=5:5:1.25:5:5:"+strconv.FormatFloat(float64(fry)/6.66, 'f', -1, 64)+",noise=alls="+strconv.Itoa(fry*5)+":allf=t")
 			}
 		}
 	} else {
@@ -718,6 +732,13 @@ func imageMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 
 	if text != "" {
 		filter.WriteString(makeTextFilter(outputWidth, text, textFont, fontSize, textColor, textposx, textposy))
+	}
+
+	if fry != 0 {
+		filter.WriteString("," + "eq=saturation=" + strconv.FormatFloat(float64(fry)*0.15+0.85, 'f', -1, 64) + ":contrast=" + strconv.Itoa(fry) + ",unsharp=5:5:1.25:5:5:" + strconv.FormatFloat(float64(fry)/6.66, 'f', -1, 64) + ",noise=alls=" + strconv.Itoa(fry*5) + ":allf=t")
+		if debug {
+			log.Print("fry is ", ","+"eq=saturation="+strconv.FormatFloat(float64(fry)*0.15+0.85, 'f', -1, 64)+":contrast="+strconv.Itoa(fry)+",unsharp=5:5:1.25:5:5:"+strconv.FormatFloat(float64(fry)/6.66, 'f', -1, 64)+",noise=alls="+strconv.Itoa(fry*5)+":allf=t")
+		}
 	}
 
 	// staring ffmpeg args
