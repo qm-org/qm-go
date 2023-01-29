@@ -52,6 +52,7 @@ var (
 	preset                    int
 	start, end, outDuration   float64
 	volume                    int
+	earrape                   bool
 	outScale                  float64
 	videoBrDiv, audioBrDiv    int
 	stretch                   string
@@ -91,6 +92,7 @@ func init() {
 	pflag.Float64Var(&end, "end", -1, "Specify the end time of the output, cannot be used when duration is specified")
 	pflag.Float64Var(&outDuration, "duration", -1, "Specify the duration of the output, cannot be used when end is specified")
 	pflag.IntVarP(&volume, "volume", "v", 0, "Specify the amount to increase or decrease the volume by, in dB")
+	pflag.BoolVar(&earrape, "earrape", false, "Heavily and extremely distort the audio (aka earrape). BE WARNED: VOLUME WILL BE SUBSTANTIALLY INCREASED.")
 	pflag.Float64VarP(&outScale, "scale", "s", -1, "Specify the output scale")
 	pflag.IntVar(&videoBrDiv, "video-bitrate", -1, "Specify the video bitrate divisor (higher = worse)")
 	pflag.IntVar(&videoBrDiv, "vb", videoBrDiv, "Shorthand for --video-bitrate")
@@ -449,8 +451,19 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 
 	// if not using --no-audio, set add the specified audio filters to filter
 	if renderAudio {
+		if earrape {
+			filter.WriteString(";aeval=sgn(val(5)):c=same")
+			if debug {
+				log.Print("earrape is true")
+			}
+		}
+
 		if volume != 0 {
-			filter.WriteString(";volume=" + strconv.Itoa(volume))
+			if earrape {
+				filter.WriteString(",volume=" + strconv.Itoa(volume) + "dB")
+			} else {
+				filter.WriteString(";volume=" + strconv.Itoa(volume) + "dB")
+			}
 			if debug {
 				log.Print("volume is ", volume)
 			}
