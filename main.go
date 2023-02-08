@@ -712,7 +712,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	// print the percentage complete (100% by now), time, ETA (hopfully 0s), fps, and fps over the last second
 
 	if len(scannerrorTextAccum) > 1 {
-		log.Println("\n\n\033[31m\033[4mPossible FFmpeg Error:\033[24m\033[31m \"", scannerrorTextAccum, "\"\033[0m")
+		log.Print("\n\n\033[31m\033[4mPossible FFmpeg Error:\033[24m\033[31m", scannerrorTextAccum, "\033[0m")
 	} else {
 		fmt.Print(
 			" 100.0%",
