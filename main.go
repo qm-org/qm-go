@@ -144,6 +144,7 @@ func init() {
 }
 
 func main() {
+	programStartTime := time.Now()
 	// throw out all flags if debug is enabled
 	if debug {
 		log.Println("throwing all flags out")
@@ -305,6 +306,7 @@ func main() {
 			fmt.Println("\033[92mFinished encoding\033[32m", output, "\033[92min", utils.TrimTime(utils.FormatTime(time.Since(startTime).Seconds())), "\033[0m")
 		}
 	}
+	log.Println("\033[92mTotal time elapsed:", utils.TrimTime(utils.FormatTime(time.Since(programStartTime).Seconds()))+"\033[0m")
 }
 
 func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum int, renderVideo bool, renderAudio bool) {
@@ -598,10 +600,12 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	// start ffmpeg for encoding
 	cmd := exec.Command("ffmpeg", args...)
 	stdout, _ := cmd.StdoutPipe()
+	stderr, _ := cmd.StderrPipe()
 	cmd.Start()
 
 	// variables for progress bar and stats
 	scannerTextAccum := " "
+	scannerrorTextAccum := " "
 	eta := 0.0
 	currentFrame := 0
 	fullTime := ""                // time as a string
@@ -625,7 +629,9 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 
 	// start the progress bar updater until the video is done encoding
 	scanner := bufio.NewScanner(stdout)
+	scannerror := bufio.NewScanner(stderr)
 	scanner.Split(bufio.ScanRunes)
+	scannerror.Split(bufio.ScanRunes)
 	for scanner.Scan() {
 		// accumulate the text from the scanner
 		scannerTextAccum += scanner.Text()
@@ -690,6 +696,10 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 		}
 	}
 
+	for scannerror.Scan() {
+		scannerrorTextAccum += scannerror.Text()
+	}
+
 	cmd.Wait()
 
 	// if the progress bar length is greater than 0, print the progress bar one last time at 100%
@@ -700,14 +710,20 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	}
 
 	// print the percentage complete (100% by now), time, ETA (hopfully 0s), fps, and fps over the last second
-	fmt.Print(
-		" 100.0%",
-		" time: ", utils.TrimTime(fullTime),
-		" ETA: ", utils.TrimTime(utils.FormatTime(eta)),
-		" fps: ", avgFramerate,
-		" fp1s: ", lastSecAvgFramerate,
-		"\n",
-	)
+
+	if len(scannerrorTextAccum) > 1 {
+		log.Println("\n\n\033[31m\033[4mPossible FFmpeg Error:\033[24m\033[31m \"", scannerrorTextAccum, "\"\033[0m")
+	} else {
+		fmt.Print(
+			" 100.0%",
+			" time: ", utils.TrimTime(fullTime),
+			" ETA: ", utils.TrimTime(utils.FormatTime(eta)),
+			" fps: ", avgFramerate,
+			" fp1s: ", lastSecAvgFramerate,
+			"\n",
+		)
+	}
+
 }
 
 func imageMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum int) {
@@ -1053,24 +1069,6 @@ func makeTextFilter(
 
 	return filter
 }
-
-/*
-ffprobe -i %inputvideo% -show_streams -select_streams a -loglevel error > %qmtemp%\astream.txt
-set /p astream=<%qmtemp%\astream.txt
-if exist "%qmtemp%\astream.txt" (del "%qmtemp%\astream.txt")
-if not defined astream (
-    echo Input does not have an audio stream>>"%temp%\qualitymuncherdebuglog.txt"
-    set hasaudio=n
-) else (
-    echo Input has an audio stream>>"%temp%\qualitymuncherdebuglog.txt"
-    set hasaudio=y
-)
-ffprobe -i %inputvideo% -show_streams -select_streams v -loglevel error > %qmtemp%\vstream.txt
-set /p vstream=<%qmtemp%\vstream.txt
-if exist "%qmtemp%\vstream.txt" (del "%qmtemp%\vstream.txt")
-call :loadinganimation
-if 1%vstream% == 1
-*/
 
 func Stream(input string, stream string) bool {
 	args := []string{
