@@ -593,7 +593,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 		encodingFileOutOf = "[" + strconv.Itoa(inNum) + "/" + strconv.Itoa(totalNum) + "] "
 	}
 
-	fmt.Println("\033[94m"+encodingFileOutOf+"Encoding file\033[36m", input, "\033[94mto\033[36m", output, "\033[0m") // print the input and output file
+	fmt.Println("\033[94m"+encodingFileOutOf+"Encoding file\033[36m", input, "\033[94mto\033[36m", output+"\033[0m") // print the input and output file
 
 	// start ffmpeg for encoding
 	cmd := exec.Command("ffmpeg", args...)
@@ -784,7 +784,7 @@ func imageMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 		encodingFileOutOf = "[" + strconv.Itoa(inNum) + "/" + strconv.Itoa(totalNum) + "] "
 	}
 
-	fmt.Println("\033[94m"+encodingFileOutOf+"Encoding file\033[36m", input, "\033[94mto\033[36m", output, "\033[0m") // print the input and output file
+	fmt.Println("\033[94m"+encodingFileOutOf+"Encoding file\033[36m", input, "\033[94mto\033[36m", output+"\033[0m") // print the input and output file
 
 	// start ffmpeg for encoding
 	cmd := exec.Command("ffmpeg", args...)
@@ -1077,7 +1077,6 @@ func Stream(input string, stream string) bool {
 		"-i", input,
 		"-show_entries", "stream=duration",
 		"-select_streams", stream,
-		"-count_packets",
 		"-of", "csv=p=0",
 	}
 
