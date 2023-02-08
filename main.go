@@ -43,6 +43,7 @@ var (
 	output                    string
 	inputs                    []string
 	debug                     bool
+	overwrite                 bool
 	progbarLength             int
 	imagePasses               int
 	loglevel                  string
@@ -80,6 +81,7 @@ func init() {
 	pflag.StringSliceVarP(&inputs, "input", "i", []string{""}, "Specify the input file(s)")
 	pflag.StringVarP(&output, "output", "o", "", "Specify the output file")
 	pflag.BoolVarP(&debug, "debug", "d", false, "Print out debug information")
+	pflag.BoolVarP(&overwrite, "overwrite", "y", false, "Overwrite the output file if it exists instead of prompting for confirmation")
 	pflag.IntVar(&progbarLength, "progress-bar", -1, "Length of progress bar, defaults based on terminal width")
 	pflag.IntVar(&imagePasses, "loop", 1, "Number of time to compress the input. ONLY USED FOR IMAGES.")
 	pflag.StringVar(&loglevel, "loglevel", "error", "Specify the log level for ffmpeg")
@@ -273,11 +275,13 @@ func main() {
 				log.Print("output file already exists")
 			}
 			var confirm string
-			fmt.Println("\033[4m\033[38;2;250;169;30mWarning\033[24m: The output file\033[38;2;250;182;37m", output, "\033[38;2;250;169;30malready exists! Overwrite? [Y/N]\033[0m")
-			fmt.Scanln(&confirm) // get user input, confirming that they want to overwrite the output file
-			if confirm != "Y" && confirm != "y" {
-				log.Println("Aborted by user - output file already exists")
-				continue
+			if !overwrite {
+				fmt.Println("\033[4m\033[38;2;250;169;30mWarning\033[24m: The output file\033[38;2;250;182;37m", output, "\033[38;2;250;169;30malready exists! Overwrite? [Y/N]\033[0m")
+				fmt.Scanln(&confirm) // get user input, confirming that they want to overwrite the output file
+				if confirm != "Y" && confirm != "y" {
+					log.Println("Aborted by user - output file already exists")
+					continue
+				}
 			}
 		}
 
