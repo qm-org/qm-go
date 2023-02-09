@@ -276,7 +276,7 @@ func main() {
 			}
 			var confirm string
 			if !overwrite {
-				fmt.Println("\033[4m\033[38;2;250;169;30mWarning\033[24m: The output file\033[38;2;250;182;37m", output, "\033[38;2;250;169;30malready exists! Overwrite? [Y/N]\033[0m")
+				fmt.Println(infoFormat("warning", "The output file\033[38;2;250;182;37m "+output+"\033[38;2;250;169;30m already exists! Overwrite? [Y/N]"))
 				fmt.Scanln(&confirm) // get user input, confirming that they want to overwrite the output file
 				if confirm != "Y" && confirm != "y" {
 					log.Println("Aborted by user - output file already exists")
@@ -303,11 +303,12 @@ func main() {
 		if outErr != nil {
 			if os.IsNotExist(outErr) {
 				log.Fatal("\033[4m\033[31mFatal Error\033[24m: something went wrong when making the output file!\033[0m")
+				log.Fatal(infoFormat("fatalError", "something went wrong when making the output file!"))
 			} else {
 				log.Fatal(err)
 			}
 		} else {
-			fmt.Println("\033[92mFinished encoding\033[32m", output, "\033[92min", utils.TrimTime(utils.FormatTime(time.Since(startTime).Seconds())), "\033[0m")
+			fmt.Println("\033[92mFinished encoding\033[38;2;255;240;96m", output, "\033[92min", utils.TrimTime(utils.FormatTime(time.Since(startTime).Seconds())), "\033[0m")
 		}
 	}
 	log.Println("\033[92mTotal time elapsed:", utils.TrimTime(utils.FormatTime(time.Since(programStartTime).Seconds()))+"\033[0m")
@@ -706,18 +707,16 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 
 	cmd.Wait()
 
-	// if the progress bar length is greater than 0, print the progress bar one last time at 100%
-	if progbarLength > 0 {
-		fmt.Print("\033[1A\033[0J", utils.ProgressBar(realOutputDuration, realOutputDuration, progbarLength))
-	} else {
-		fmt.Print("\033[1A\033[0J")
-	}
-
 	// print the percentage complete (100% by now), time, ETA (hopfully 0s), fps, and fps over the last second
 
 	if len(scannerrorTextAccum) > 1 {
-		log.Print("\n\n\033[31m\033[4mPossible FFmpeg Error:\033[24m\033[31m", scannerrorTextAccum, "\033[0m")
+		fmt.Println("\n\n\033[31m\033[4mPossible FFmpeg Error:\033[24m\033[31m", scannerrorTextAccum, "\033[0m")
 	} else {
+		if progbarLength > 0 {
+			fmt.Print("\033[1A\033[0J", utils.ProgressBar(realOutputDuration, realOutputDuration, progbarLength))
+		} else {
+			fmt.Print("\033[1A\033[0J")
+		}
 		fmt.Print(
 			" 100.0%",
 			" time: ", utils.TrimTime(fullTime),
@@ -1090,4 +1089,22 @@ func Stream(input string, stream string) bool {
 	}
 
 	return len(string(out)) != 0
+}
+
+func infoFormat(format string, text string) string {
+	var accumulatedText string
+	if format == "fatalError" {
+		accumulatedText += "\033[4m\033[31mFatal Error\033[24m: "
+	} else if format == "error" {
+		accumulatedText += "\033[4m\033[31mError\033[24m: "
+	} else if format == "warning" {
+		accumulatedText += "\033[4m\033[38;2;250;169;30mWarning\033[24m: "
+	} else if format == "success" {
+		accumulatedText += "\033[92m"
+	} else if format == "working" {
+		accumulatedText += "\033[94m"
+	}
+	accumulatedText += text
+	accumulatedText += "\033[0m"
+	return accumulatedText
 }
