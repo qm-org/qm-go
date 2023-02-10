@@ -36,6 +36,7 @@ import (
 
 	"github.com/flopp/go-findfont"
 	"github.com/spf13/pflag"
+	"golang.org/x/term"
 )
 
 var (
@@ -74,9 +75,37 @@ var (
 
 	// other variables
 	unspecifiedProgbarSize bool
+	strFmt                 formats
 )
 
+type formats struct {
+	success, successHL string
+	warning, warningHL string
+	error, errorHL     string
+	info, infoHL       string
+	debug, debugHL     string
+	working, workingHL string
+	reset              string
+}
+
 func init() {
+	// colors
+	strFmt = formats{
+		success:   "\033[32m",
+		successHL: "\033[92m",
+		warning:   "\033[38;2;250;169;30m",
+		warningHL: "\033[38;2;250;182;37m",
+		error:     "\033[31m",
+		errorHL:   "\033[91m",
+		info:      "\033[94m",
+		infoHL:    "\033[36m",
+		debug:     "\033[36m",
+		debugHL:   "\033[96m",
+		working:   "\033[94m",
+		workingHL: "\033[36m",
+		reset:     "\033[0m",
+	}
+
 	pflag.CommandLine.SortFlags = false
 	pflag.StringSliceVarP(&inputs, "input", "i", []string{""}, "Specify the input file(s)")
 	pflag.StringVarP(&output, "output", "o", "", "Specify the output file")
@@ -146,7 +175,6 @@ func init() {
 }
 
 func main() {
-	programStartTime := time.Now()
 	// throw out all flags if debug is enabled
 	if debug {
 		log.Println("throwing all flags out")
@@ -196,11 +224,11 @@ func main() {
 		// if it doesn't exist, skip this input and go to the next one
 		if err != nil {
 			if os.IsNotExist(err) {
-				log.Println("\033[4m\033[31mError\033[24m: input file \033[91m" + input + " \033[31mdoes not exist\033[0m")
+				log.Println(strFmt.error+"Error: input file", strFmt.errorHL+input+strFmt.error, "does not exist"+strFmt.reset)
 				continue
 			} else {
 				// the input file exists but can't be accessed for some reason
-				fmt.Println("\033[4m\033[38;2;250;169;30mWarning\033[24m: Input file \033[38;2;250;182;37m" + input + " \033[38;2;250;169;30mmight not be accessible\033[0m")
+				fmt.Println(strFmt.warning+"Warning: Input file", strFmt.warningHL+input+strFmt.warning, "might not be accessible."+strFmt.reset)
 			}
 		}
 
@@ -238,7 +266,7 @@ func main() {
 		}
 
 		if !renderVideo && !renderAudio {
-			log.Println("\033[4m\033[mError\033[24m: Cannot encode video without audio or video streams\033[0m")
+			log.Println(strFmt.error + "Error: Cannot encode video without audio or video streams" + strFmt.reset)
 			continue
 		}
 
@@ -276,7 +304,7 @@ func main() {
 			}
 			var confirm string
 			if !overwrite {
-				fmt.Println(infoFormat("warning", "The output file\033[38;2;250;182;37m "+output+"\033[38;2;250;169;30m already exists! Overwrite? [Y/N]"))
+				fmt.Println(strFmt.warning+"Warning: The output file", strFmt.warningHL+output+strFmt.warning, "already exists! Overwrite? [Y/N]"+strFmt.reset)
 				fmt.Scanln(&confirm) // get user input, confirming that they want to overwrite the output file
 				if confirm != "Y" && confirm != "y" {
 					log.Println("Aborted by user - output file already exists")
@@ -302,16 +330,15 @@ func main() {
 		_, outErr := os.Stat(output)
 		if outErr != nil {
 			if os.IsNotExist(outErr) {
-				log.Fatal("\033[4m\033[31mFatal Error\033[24m: something went wrong when making the output file!\033[0m")
-				log.Fatal(infoFormat("fatalError", "something went wrong when making the output file!"))
+				log.Fatal(strFmt.error + "Fatal Error: something went wrong when making the output file!" + strFmt.reset)
+				log.Fatal(strFmt.error + "Fatal Error: something went wrong when making the output file!" + strFmt.reset)
 			} else {
 				log.Fatal(err)
 			}
 		} else {
-			fmt.Println("\033[92mFinished encoding\033[38;2;255;240;96m", output, "\033[92min", utils.TrimTime(utils.FormatTime(time.Since(startTime).Seconds())), "\033[0m")
+			fmt.Println(strFmt.success+"Finished encoding"+strFmt.successHL, output+strFmt.success, "in", utils.TrimTime(utils.FormatTime(time.Since(startTime).Seconds()))+strFmt.reset)
 		}
 	}
-	log.Println("\033[92mTotal time elapsed:", utils.TrimTime(utils.FormatTime(time.Since(programStartTime).Seconds()))+"\033[0m")
 }
 
 func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum int, renderVideo bool, renderAudio bool) {
@@ -600,7 +627,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 		encodingFileOutOf = "[" + strconv.Itoa(inNum) + "/" + strconv.Itoa(totalNum) + "] "
 	}
 
-	fmt.Println("\033[94m"+encodingFileOutOf+"Encoding file\033[36m", input, "\033[94mto\033[36m", output+"\033[0m") // print the input and output file
+	fmt.Println(strFmt.working+encodingFileOutOf+"Encoding "+strFmt.workingHL+filepath.Base(input), strFmt.working+"to", strFmt.workingHL+filepath.Base(output)+strFmt.reset) // print the input and output file
 
 	// start ffmpeg for encoding
 	cmd := exec.Command("ffmpeg", args...)
@@ -658,7 +685,14 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 
 				// if the progress bar length is not set, set it to the length of the longest possible progress bar
 				if unspecifiedProgbarSize {
+					var terminalWidth int
+					lastTerminalWidth := terminalWidth
+					terminalWidth, _, _ = term.GetSize(int(os.Stdout.Fd()))
+					lastProgBar := progbarLength
 					progbarLength = utils.ProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " time: " + utils.TrimTime(fullTime) + " ETA: " + utils.TrimTime(utils.FormatTime(eta)) + " fps: " + avgFramerate + " fp1s: " + lastSecAvgFramerate))
+					if (lastProgBar+1 == progbarLength || lastProgBar-1 == progbarLength) && terminalWidth == lastTerminalWidth {
+						progbarLength = lastProgBar
+					}
 				}
 				currentTotalTime = float64(hour*3600+min*60+sec) + milisec
 
@@ -698,6 +732,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 
 			// reset the accumulated text
 			scannerTextAccum = ""
+
 		}
 	}
 
@@ -710,7 +745,7 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	// print the percentage complete (100% by now), time, ETA (hopfully 0s), fps, and fps over the last second
 
 	if len(scannerrorTextAccum) > 1 {
-		fmt.Println("\n\n\033[31m\033[4mPossible FFmpeg Error:\033[24m\033[31m", scannerrorTextAccum, "\033[0m")
+		fmt.Println("\n\n"+strFmt.error+"Possible FFmpeg Error:", scannerrorTextAccum+strFmt.reset)
 	} else {
 		if progbarLength > 0 {
 			fmt.Print("\033[1A\033[0J", utils.ProgressBar(realOutputDuration, realOutputDuration, progbarLength))
@@ -803,7 +838,7 @@ func imageMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 		encodingFileOutOf = "[" + strconv.Itoa(inNum) + "/" + strconv.Itoa(totalNum) + "] "
 	}
 
-	fmt.Println("\033[94m"+encodingFileOutOf+"Encoding file\033[36m", input, "\033[94mto\033[36m", output+"\033[0m") // print the input and output file
+	fmt.Println(strFmt.working+encodingFileOutOf+"Encoding "+strFmt.workingHL+filepath.Base(input), strFmt.working+"to", strFmt.workingHL+filepath.Base(output)+strFmt.reset) // print the input and output file
 
 	// start ffmpeg for encoding
 	cmd := exec.Command("ffmpeg", args...)
@@ -1059,7 +1094,7 @@ func makeTextFilter(
 	}
 	err = ioutil.WriteFile("temp/font.ttf", input, 0644)
 	if err != nil {
-		log.Fatal("\033[4m\033[31mFatal Error\033[24m: unable to create temp/font.ttf")
+		log.Fatal(strFmt.error + "Fatal Error: unable to create temp/font.ttf" + strFmt.reset)
 	}
 
 	filter := ",drawtext=fontfile='temp/font.ttf':text='" + inText + "':fontcolor=" + color + ":borderw=(" + strconv.FormatFloat(size*float64(outWidth/100), 'f', -1, 64) + "/12):fontsize=" + strconv.FormatFloat(size*float64(outWidth/100), 'f', -1, 64) + ":x=(w-(tw))*(" + strconv.Itoa(xpos) + "/100):y=(h-(th))*(" + strconv.Itoa(ypos) + "/100)"
@@ -1076,35 +1111,16 @@ func makeTextFilter(
 func Stream(input string, stream string) bool {
 	args := []string{
 		"-i", input,
-		"-show_entries", "stream=duration",
+		"-show_entries", "stream=index",
 		"-select_streams", stream,
 		"-of", "csv=p=0",
 	}
 
 	cmd := exec.Command("ffprobe", args...)
-
 	out, err := cmd.Output()
 	if err != nil {
 		return false
 	}
 
 	return len(string(out)) != 0
-}
-
-func infoFormat(format string, text string) string {
-	var accumulatedText string
-	if format == "fatalError" {
-		accumulatedText += "\033[4m\033[31mFatal Error\033[24m: "
-	} else if format == "error" {
-		accumulatedText += "\033[4m\033[31mError\033[24m: "
-	} else if format == "warning" {
-		accumulatedText += "\033[4m\033[38;2;250;169;30mWarning\033[24m: "
-	} else if format == "success" {
-		accumulatedText += "\033[92m"
-	} else if format == "working" {
-		accumulatedText += "\033[94m"
-	}
-	accumulatedText += text
-	accumulatedText += "\033[0m"
-	return accumulatedText
 }
