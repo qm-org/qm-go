@@ -657,7 +657,8 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 	}
 
 	// print the progress bar, completely unfilled
-	fmt.Println(utils.ProgressBar(0.0, realOutputDuration, progbarLength))
+	// fmt.Println(utils.ProgressBar(0.0, realOutputDuration, progbarLength))
+	// removed above due to it not working now
 
 	// start the progress bar updater until the video is done encoding
 	scanner := bufio.NewScanner(stdout)
@@ -672,39 +673,40 @@ func videoMunch(input string, inputData ffprobe.MediaData, inNum int, totalNum i
 		if scanner.Text() == "\r" || scanner.Text() == "\n" {
 			// if the accumulated text contains the time, process it and print the progress bar and % completion
 			if strings.Contains(scannerTextAccum, "time=") {
-				// time variables
-				fullTime = strings.Split(strings.Split(scannerTextAccum, "\n")[0], "=")[1]
-				hour, _ := strconv.Atoi(strings.Split(fullTime, ":")[0])
-				min, _ := strconv.Atoi(strings.Split(fullTime, ":")[1])
-				sec, _ := strconv.Atoi(strings.Split(strings.Split(fullTime, ":")[2], ".")[0])
-				milisec, _ := strconv.ParseFloat("."+strings.Split(fullTime, ".")[1], 64)
-				fullTime = strings.Split(fullTime, ".")[0] + strconv.FormatFloat(milisec, 'f', 1, 64)[1:] + "s"
+				if !strings.Contains(scannerTextAccum, "time=N/A") { // needed due to ffmpeg 6.1 adding a thing where time is N/A at the start of the encoding process
+					// time variables
+					fullTime = strings.Split(strings.Split(scannerTextAccum, "\n")[0], "=")[1]
+					hour, _ := strconv.Atoi(strings.Split(fullTime, ":")[0])
+					min, _ := strconv.Atoi(strings.Split(fullTime, ":")[1])
+					sec, _ := strconv.Atoi(strings.Split(strings.Split(fullTime, ":")[2], ".")[0])
+					milisec, _ := strconv.ParseFloat("."+strings.Split(fullTime, ".")[1], 64)
+					fullTime = strings.Split(fullTime, ".")[0] + strconv.FormatFloat(milisec, 'f', 1, 64)[1:] + "s"
 
-				// calculate estimated time remaining
-				eta = getETA(startTime, currentTotalTime, realOutputDuration)
+					// calculate estimated time remaining
+					eta = getETA(startTime, currentTotalTime, realOutputDuration)
 
-				// if the progress bar length is not set, set it to the length of the longest possible progress bar
-				if unspecifiedProgbarSize {
-					var terminalWidth int
-					lastTerminalWidth := terminalWidth
-					terminalWidth, _, _ = term.GetSize(int(os.Stdout.Fd()))
-					lastProgBar := progbarLength
-					progbarLength = utils.ProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " time: " + utils.TrimTime(fullTime) + " ETA: " + utils.TrimTime(utils.FormatTime(eta)) + " fps: " + avgFramerate + " fp1s: " + lastSecAvgFramerate))
-					if (lastProgBar+1 == progbarLength || lastProgBar-1 == progbarLength) && terminalWidth == lastTerminalWidth {
-						progbarLength = lastProgBar
+					// if the progress bar length is not set, set it to the length of the longest possible progress bar
+					if unspecifiedProgbarSize {
+						var terminalWidth int
+						lastTerminalWidth := terminalWidth
+						terminalWidth, _, _ = term.GetSize(int(os.Stdout.Fd()))
+						lastProgBar := progbarLength
+						progbarLength = utils.ProgbarSize(len(" " + strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64) + "%" + " time: " + utils.TrimTime(fullTime) + " ETA: " + utils.TrimTime(utils.FormatTime(eta)) + " fps: " + avgFramerate + " fp1s: " + lastSecAvgFramerate))
+						if (lastProgBar+1 == progbarLength || lastProgBar-1 == progbarLength) && terminalWidth == lastTerminalWidth {
+							progbarLength = lastProgBar
+						}
 					}
-				}
-				currentTotalTime = float64(hour*3600+min*60+sec) + milisec
+					currentTotalTime = float64(hour*3600+min*60+sec) + milisec
 
-				// if the progress bar length is greater than 0, print the progress bar
-				if progbarLength > 0 {
-					fmt.Print("\033[1A", utils.ProgressBar(currentTotalTime, realOutputDuration, progbarLength))
-				} else {
-					fmt.Print("\033[1A\033[0J")
+					// if the progress bar length is greater than 0, print the progress bar
+					if progbarLength > 0 {
+						fmt.Print("\033[1A", utils.ProgressBar(currentTotalTime, realOutputDuration, progbarLength))
+					} else {
+						fmt.Print("\033[1A\033[0J")
+					}
+					// print the percentage complete
+					fmt.Print(" ", strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64), "%")
 				}
-
-				// print the percentage complete
-				fmt.Print(" ", strconv.FormatFloat((currentTotalTime*100/realOutputDuration), 'f', 1, 64), "%")
 			}
 
 			// if the accumulated text contains the frame, process it
