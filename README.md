@@ -1,5 +1,5 @@
 # Quality Muncher Go
-Quality Muncher Go (aka QM:GO) is a program written to make low quality videos, images, GIFs, and audios. (GIFs are currently a work-in-progress)
+Quality Muncher Go (QM:GO) is a program written to make videos, images, GIFs, and audios look worse in every way imaginable.
 
 ## Usage
 Below are the flags. The only needed flag is the input, as all of the others have default values or are disabled by default.
